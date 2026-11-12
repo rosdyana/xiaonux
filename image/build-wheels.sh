@@ -52,6 +52,15 @@ for p in "${PKGS[@]}"; do
   echo "   ok in $(( $(date +%s) - t0 ))s"
 done
 
-cp -u "$CHROOT"/wheels/*.whl "$OUT/" 2>/dev/null || true
+# Bundle the shared libraries each wheel links (e.g. Pillow -> libjpeg), so
+# wheels work on the image without extra Debian packages.
+echo "== auditwheel repair"
+chroot "$CHROOT" sh -c 'python3 -m pip install -q auditwheel >/dev/null 2>&1; rm -rf /wheels/repaired; mkdir -p /wheels/repaired
+for w in /wheels/*.whl; do
+  out=$(rm -f /wheels/repaired/$(basename "$w"); auditwheel repair -w /wheels/repaired "$w" 2>&1) && echo "  repaired $(basename "$w")" \
+    || { cp "$w" /wheels/repaired/; echo "  kept $(basename "$w"): $(echo "$out" | tail -1)"; }
+done'
+rm -f "$OUT"/*.whl
+cp "$CHROOT"/wheels/repaired/*.whl "$OUT/"
 chown -R "${SUDO_UID:-0}:${SUDO_GID:-0}" "$OUT"
 ls -la "$OUT"

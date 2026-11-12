@@ -3,3 +3,119 @@ navigated: http://localhost:5180/?autoboot
 console: Failed to load resource: the server responded with a status of 404 (Not Found)
 console: [xiaonux] restore at 761 ms
 console: [xiaonux] prompt at 778 ms
+console: [xiaonux] saved machine (idle) 96.1 MB in 167 ms
+console: [xiaonux] saved machine (idle) 141.3 MB in 253 ms
+console: [xiaonux] saved machine (idle) 142.1 MB in 186 ms
+console: [xiaonux] saved machine (idle) 144.1 MB in 111 ms
+console: [xiaonux] saved machine (idle) 151.5 MB in 205 ms
+console: [xiaonux] saved machine (idle) 153.7 MB in 124 ms
+console: [xiaonux] saved machine (idle) 150.9 MB in 103 ms
+console: [xiaonux] saved machine (idle) 163.4 MB in 112 ms
+console: [xiaonux] saved machine (idle) 167.1 MB in 146 ms
+console: [xiaonux] saved machine (idle) 173.6 MB in 111 ms
+console: [xiaonux] saved machine (idle) 176.5 MB in 88 ms
+console: [xiaonux] saved machine (idle) 199.1 MB in 274 ms
+console: [xiaonux] saved machine (idle) 219.3 MB in 277 ms
+console: [xiaonux] saved machine (idle) 220.0 MB in 160 ms
+console: [xiaonux] saved machine (idle) 220.0 MB in 144 ms
+console: [xiaonux] saved machine (idle) 216.4 MB in 149 ms
+console: [xiaonux] saved machine (idle) 218.0 MB in 102 ms
+console: [xiaonux] saved machine (idle) 219.1 MB in 98 ms
+console: [xiaonux] saved machine (idle) 219.8 MB in 130 ms
+console: [xiaonux] saved machine (idle) 220.5 MB in 164 ms
+console: [xiaonux] saved machine (idle) 214.6 MB in 186 ms
+console: [xiaonux] saved machine (idle) 215.4 MB in 105 ms
+console: [xiaonux] saved machine (idle) 215.9 MB in 100 ms
+console: [xiaonux] saved machine (idle) 217.0 MB in 102 ms
+console: [xiaonux] saved machine (idle) 217.8 MB in 101 ms
+console: [xiaonux] saved machine (idle) 218.7 MB in 101 ms
+console: [xiaonux] saved machine (idle) 219.5 MB in 197 ms
+console: [xiaonux] saved machine (idle) 217.5 MB in 185 ms
+console: [xiaonux] saved machine (idle) 216.9 MB in 318 ms
+console: [xiaonux] saved machine (idle) 217.5 MB in 147 ms
+console: [xiaonux] saved machine (idle) 218.6 MB in 98 ms
+console: [xiaonux] saved machine (idle) 219.0 MB in 99 ms
+console: [xiaonux] saved machine (idle) 220.3 MB in 130 ms
+console: [xiaonux] saved machine (idle) 216.1 MB in 117 ms
+console: [xiaonux] saved machine (idle) 217.2 MB in 102 ms
+console: [xiaonux] saved machine (idle) 218.4 MB in 109 ms
+console: [xiaonux] saved machine (idle) 219.9 MB in 102 ms
+console: [xiaonux] saved machine (idle) 216.5 MB in 195 ms
+console: [xiaonux] saved machine (idle) 217.6 MB in 150 ms
+console: [xiaonux] saved machine (idle) 220.0 MB in 100 ms
+console: [xiaonux] saved machine (idle) 216.1 MB in 151 ms
+console: [xiaonux] saved machine (idle) 218.5 MB in 189 ms
+console: [xiaonux] saved machine (idle) 219.9 MB in 154 ms
+console: [xiaonux] saved machine (idle) 217.9 MB in 331 ms
+console: [xiaonux] saved machine (idle) 218.7 MB in 142 ms
+console: [xiaonux] saved machine (idle) 215.3 MB in 458 ms
+console: [xiaonux] saved machine (idle) 216.4 MB in 139 ms
+console: [xiaonux] saved machine (idle) 218.3 MB in 378 ms
+console: [xiaonux] saved machine (idle) 219.1 MB in 99 ms
+console: [xiaonux] saved machine (idle) 216.9 MB in 263 ms
+console: [xiaonux] saved machine (idle) 217.7 MB in 112 ms
+console: [xiaonux] saved machine (idle) 217.5 MB in 166 ms
+console: [xiaonux] saved machine (idle) 218.3 MB in 101 ms
+console: [xiaonux] saved machine (idle) 219.2 MB in 112 ms
+console: [xiaonux] saved machine (idle) 216.6 MB in 108 ms
+console: [xiaonux] saved machine (idle) 218.2 MB in 106 ms
+console: [xiaonux] saved machine (idle) 218.1 MB in 333 ms
+console: [xiaonux] saved machine (idle) 218.7 MB in 367 ms
+console: [xiaonux] saved machine (idle) 216.4 MB in 259 ms
+console: [xiaonux] saved machine (idle) 217.9 MB in 118 ms
+console: [xiaonux] saved machine (idle) 218.4 MB in 104 ms
+console: [xiaonux] saved machine (idle) 218.1 MB in 112 ms
+console: [xiaonux] saved machine (idle) 219.1 MB in 194 ms
+console: [xiaonux] saved machine (idle) 217.0 MB in 100 ms
+console: [xiaonux] saved machine (idle) 217.8 MB in 101 ms
+console: [xiaonux] saved machine (idle) 218.5 MB in 102 ms
+console: [xiaonux] saved machine (idle) 215.1 MB in 111 ms
+console: [xiaonux] saved machine (idle) 216.5 MB in 103 ms
+console: [xiaonux] saved machine (idle) 84.9 MB in 113 ms
+console: [xiaonux] saved machine (idle) 105.9 MB in 118 ms
+{
+  "browser": "chrome",
+  "ok": true,
+  "marks": {
+    "restore": 761,
+    "prompt": 778
+  },
+  "prompt_wall_s": 1.01,
+  "cmds": [
+    {
+      "cmd": "time pip install -q pandas cryptography pillow orjson 2>&1 | grep -vE 'WARNING: Running|venv|root-user' | tail -3",
+      "s": 2670.537
+    },
+    {
+      "cmd": "python3 -c 'import pandas as pd; print(pd.__version__, pd.DataFrame({\"a\":[1,2,3]}).a.sum())'",
+      "s": 17.351
+    },
+    {
+      "cmd": "python3 -c 'from cryptography.fernet import Fernet; f=Fernet(Fernet.generate_key()); print(f.decrypt(f.encrypt(b\"ok\")))'",
+      "s": 2.22
+    },
+    {
+      "cmd": "python3 -c 'from PIL import Image; import orjson; print(Image.new(\"RGB\",(4,4)).size, orjson.dumps({\"a\":1}))'",
+      "s": 2.622
+    }
+  ],
+  "stats": {
+    "marks": {
+      "restore": 761,
+      "prompt": 778
+    },
+    "bytesFetched": 15170379,
+    "heapMb": 749,
+    "outBytes": 671,
+    "disk": {
+      "chunksFetched": 195,
+      "chunksFromCache": 59,
+      "bytesNetwork": 13304022,
+      "bytesCache": 3898973,
+      "overlayClusters": 38235,
+      "overlayBackend": "opfs",
+      "errors": 0
+    }
+  },
+  "screen": "root@xiaonux:~# \nroot@xiaonux:~# time pip install -q pandas cryptography pillow orjson 2>&1 | grep -vE 'WARNING: Running|venv|root-user' | tail -3\n\nreal    13m5.278s\nuser    12m21.094s\nsys     0m26.168s\nroot@xiaonux:~# python3 -c 'import pandas as pd; print(pd.__version__, pd.DataFrame({\"a\":[1,2,3]}).a.sum())'\n3.1.1 6\nroot@xiaonux:~# python3 -c 'from cryptography.fernet import Fernet; f=Fernet(Fernet.generate_key()); print(f.decrypt(f.encrypt(b\"ok\")))'\nb'ok'\nroot@xiaonux:~# python3 -c 'from PIL import Image; import orjson; print(Image.new(\"RGB\",(4,4)).size, orjson.dumps({\"a\":1}))'\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    from PIL import Image; import orjson; print(Image.new(\"RGB\",(4,4)).size, orjson.dumps({\"a\":1}))\n    ^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/local/lib/python3.13/dist-packages/PIL/Image.py\", line 94, in <module>\n    from . import _imaging as core\nImportError: libjpeg.so.62: cannot open shared object file: No such file or directory\nroot@xiaonux:~# "
+}

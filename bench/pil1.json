@@ -1,0 +1,47 @@
+navigated: http://localhost:5180/?autoboot&net=off
+console: Failed to load resource: the server responded with a status of 404 (Not Found)
+console: [xiaonux] restore at 941 ms
+console: [xiaonux] prompt at 959 ms
+console: [xiaonux] saved machine (idle) 94.6 MB in 344 ms
+console: [xiaonux] saved machine (idle) 105.1 MB in 318 ms
+console: [xiaonux] blocked pypi.org: network is off
+console: [xiaonux] blocked pypi.org: network is off
+console: [xiaonux] saved machine (idle) 97.9 MB in 354 ms
+{
+  "browser": "chrome",
+  "ok": true,
+  "marks": {
+    "restore": 941,
+    "prompt": 959
+  },
+  "prompt_wall_s": 1.274,
+  "cmds": [
+    {
+      "cmd": "time pip install -q --retries 0 --timeout 3 pillow orjson 2>&1 | grep -vE 'WARNING: Running|venv|root-user' | tail -2",
+      "s": 47.715
+    },
+    {
+      "cmd": "python3 -c 'from PIL import Image; import orjson, io; b=io.BytesIO(); Image.new(\"RGB\",(8,8),\"red\").save(b,\"JPEG\"); print(\"jpeg\", len(b.getvalue()), orjson.dumps({\"a\":1}))'",
+      "s": 4.248
+    }
+  ],
+  "stats": {
+    "marks": {
+      "restore": 941,
+      "prompt": 959
+    },
+    "bytesFetched": 15170379,
+    "heapMb": 493,
+    "outBytes": 440,
+    "disk": {
+      "chunksFetched": 166,
+      "chunksFromCache": 1,
+      "bytesNetwork": 11067026,
+      "bytesCache": 33731,
+      "overlayClusters": 1679,
+      "overlayBackend": "opfs",
+      "errors": 0
+    }
+  },
+  "screen": "root@xiaonux:~# \nroot@xiaonux:~# time pip install -q --retries 0 --timeout 3 pillow orjson 2>&1 | grep -vE 'WARNING: Running|venv|root-user' | tail -2\n\nreal    0m47.669s\nuser    0m42.188s\nsys     0m3.016s\nroot@xiaonux:~# python3 -c 'from PIL import Image; import orjson, io; b=io.BytesIO(); Image.new(\"RGB\",(8,8),\"red\").save(b,\"JPEG\"); print(\"jpeg\", len(b\n.getvalue()), orjson.dumps({\"a\":1}))'\njpeg 633 b'{\"a\":1}'\nroot@xiaonux:~# "
+}
