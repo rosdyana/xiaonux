@@ -645,7 +645,7 @@ static void glue(riscv_cpu_flush_tlb_write_range_ram,
                       MSTATUS_MPRV | MSTATUS_SUM | MSTATUS_MXR)
 
 /* cycle and insn counters */
-#define COUNTEREN_MASK ((1 << 0) | (1 << 2))
+#define COUNTEREN_MASK ((1 << 0) | (1 << 1) | (1 << 2)) /* xiaonux: + TM (time CSR) */
 
 /* return the complete mstatus with the SD bit */
 static target_ulong get_mstatus(RISCVCPUState *s, target_ulong mask)
@@ -742,6 +742,20 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
             }
         }
         val = (int64_t)s->insn_counter;
+        break;
+    case 0xc01: /* time: xiaonux, served from the CLINT time base */
+        if (!riscv_cpu_time_hook)
+            goto invalid_csr;
+        if (s->priv < PRV_M) {
+            uint32_t counteren;
+            if (s->priv < PRV_S)
+                counteren = s->scounteren;
+            else
+                counteren = s->mcounteren;
+            if (((counteren >> 1) & 1) == 0)
+                goto invalid_csr;
+        }
+        val = (int64_t)riscv_cpu_time_hook(riscv_cpu_time_opaque);
         break;
     case 0xc80: /* mcycleh */
     case 0xc82: /* minstreth */

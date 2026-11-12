@@ -99,6 +99,15 @@ static uint64_t rtc_get_time(RISCVMachine *m)
     return val;
 }
 
+/* xiaonux: 'time' CSR support (see riscv_cpu.h) */
+uint64_t (*riscv_cpu_time_hook)(void *opaque);
+void *riscv_cpu_time_opaque;
+
+static uint64_t riscv_time_hook(void *opaque)
+{
+    return rtc_get_time(opaque);
+}
+
 static uint32_t htif_read(void *opaque, uint32_t offset,
                           int size_log2)
 {
@@ -621,14 +630,29 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
 
     max_xlen = m->max_xlen;
     misa = riscv_cpu_get_misa(m->cpu_state);
-    q = isa_string;
-    q += snprintf(isa_string, sizeof(isa_string), "rv%d", max_xlen);
-    for(i = 0; i < 26; i++) {
-        if (misa & (1 << i))
-            *q++ = 'a' + i;
+    /* xiaonux: Linux >= 6.x wants the ISA string in canonical order
+       (rv64imafdc...), not alphabetical, and prefers the newer
+       riscv,isa-base / riscv,isa-extensions properties. */
+    {
+        static const char canon[] = "imafdc";
+        char ext_list[64];
+        int ext_len = 0;
+        q = isa_string;
+        q += snprintf(isa_string, sizeof(isa_string), "rv%d", max_xlen);
+        for(i = 0; canon[i]; i++) {
+            if (misa & (1 << (canon[i] - 'a'))) {
+                *q++ = canon[i];
+                ext_list[ext_len++] = canon[i];
+                ext_list[ext_len++] = '\0';
+            }
+        }
+        q += sprintf(q, "_zicsr_zifencei");
+        memcpy(ext_list + ext_len, "zicsr\0zifencei\0", 15);
+        ext_len += 15;
+        fdt_prop_str(s, "riscv,isa", isa_string);
+        fdt_prop_str(s, "riscv,isa-base", max_xlen == 32 ? "rv32i" : "rv64i");
+        fdt_prop(s, "riscv,isa-extensions", ext_list, ext_len);
     }
-    *q = '\0';
-    fdt_prop_str(s, "riscv,isa", isa_string);
     
     fdt_prop_str(s, "mmu-type", max_xlen <= 32 ? "riscv,sv32" : "riscv,sv48");
     fdt_prop_u32(s, "clock-frequency", 2000000000);
@@ -865,6 +889,8 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     s->mem_map->flush_tlb_write_range = riscv_flush_tlb_write_range;
 
     s->cpu_state = riscv_cpu_init(s->mem_map, max_xlen);
+    riscv_cpu_time_opaque = s;
+    riscv_cpu_time_hook = riscv_time_hook;
     if (!s->cpu_state) {
         vm_error("unsupported max_xlen=%d\n", max_xlen);
         /* XXX: should free resources */

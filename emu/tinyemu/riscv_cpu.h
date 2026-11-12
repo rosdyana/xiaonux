@@ -63,6 +63,11 @@ typedef struct {
 
 int riscv_cpu_get_max_xlen(void);
 
+/* xiaonux: the machine provides the CLINT time base so the CPU can serve
+   the 'time' CSR (0xc01) directly instead of trapping to M-mode. */
+extern uint64_t (*riscv_cpu_time_hook)(void *opaque);
+extern void *riscv_cpu_time_opaque;
+
 extern const RISCVCPUClass riscv_cpu_class32;
 extern const RISCVCPUClass riscv_cpu_class64;
 extern const RISCVCPUClass riscv_cpu_class128;
