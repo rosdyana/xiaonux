@@ -11,7 +11,7 @@ wheels:         ## build riscv64 wheels (builder VM) and publish the index to di
 	$(ORB) -m $(VM) sudo image/build-wheels.sh
 	python3 image/wheel-index.py
 
-.PHONY: wheels emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
+.PHONY: serve wheels emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
 
 emu:            ## native temu + splitimg (debugging)
 	$(MAKE) -C emu
@@ -60,6 +60,9 @@ web:            ## production page -> web/dist
 
 dev:            ## dev server with COOP/COEP on http://localhost:5180
 	cd web && pnpm install --frozen-lockfile && pnpm dev
+
+serve:          ## production build + preview on :5180 (no live reload; use for long tests)
+	cd web && pnpm build && pnpm exec vite preview --port 5180 --strictPort
 
 boot-chrome:    ## headless Chrome test against `make dev` (snapshot path, 100 Mbit/s)
 	cd bench && node browser-boot.mjs --mbit 100 --cmd "uname -a" --cmd 'python3 -c "print(2+2)"' --cmd "df -h"

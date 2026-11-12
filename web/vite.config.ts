@@ -20,37 +20,43 @@ function serveVm(): Plugin {
   return {
     name: 'xiaonux-serve-vm',
     configureServer(server) {
-      server.middlewares.use('/vm', (req, res, next) => {
-        const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0]));
-        const file = join(VM_DIR, path);
-        if (!file.startsWith(VM_DIR)) return next();
-        let size: number;
-        try {
-          const st = statSync(file);
-          if (!st.isFile()) return next();
-          size = st.size;
-        } catch {
-          res.statusCode = 404;
-          return res.end('not found');
-        }
-        res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
-        res.setHeader('Content-Length', String(size));
-        res.setHeader('Cache-Control', 'no-cache');
-        createReadStream(file).pipe(res);
-      });
+      server.middlewares.use('/vm', serveVmFiles);
+    },
+    // `vite preview` (production build, no live-reload client) serves /vm too
+    configurePreviewServer(server) {
+      server.middlewares.use('/vm', serveVmFiles);
     },
   };
 }
 
+function serveVmFiles(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, next: () => void) {
+  const path = normalize(decodeURIComponent((req.url ?? '/').split('?')[0]));
+  const file = join(VM_DIR, path);
+  if (!file.startsWith(VM_DIR)) return next();
+  let size: number;
+  try {
+    const st = statSync(file);
+    if (!st.isFile()) return next();
+    size = st.size;
+  } catch {
+    res.statusCode = 404;
+    return res.end('not found');
+  }
+  res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
+  res.setHeader('Content-Length', String(size));
+  res.setHeader('Cache-Control', 'no-cache');
+  createReadStream(file).pipe(res);
+}
+
+// Needed later for SharedArrayBuffer; harmless now.
+const COI = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp',
+};
+
 export default defineConfig({
   plugins: [serveVm()],
-  server: {
-    port: 5180,
-    headers: {
-      // Needed later for SharedArrayBuffer; harmless now.
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
+  server: { port: 5180, headers: COI },
+  preview: { port: 5180, headers: COI },
   worker: { format: 'es' },
 });
