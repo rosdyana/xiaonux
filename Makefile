@@ -1,20 +1,52 @@
 # xiaonux — one command per job. Build outputs go to build/ and dist/ (git-ignored).
 
 EMSDK ?= $(HOME)/emsdk
+ORB   ?= /Applications/OrbStack.app/Contents/MacOS/bin/orb
+VM    ?= builder
+EMENV := . $(EMSDK)/emsdk_env.sh >/dev/null 2>&1 &&
+CMDLINE ?= console=hvc0 root=/dev/vda rw earlycon=sbi
+RAM ?= 512
 
-.PHONY: emu image web dev clean
+.PHONY: emu wasm firmware kernel rootfs image stage web dev boot-native boot-chrome clean vm-stop
 
 emu:            ## native temu + splitimg (debugging)
 	$(MAKE) -C emu
 
-image:          ## kernel, rootfs, disk image (runs in the OrbStack builder VM)
-	@echo "image: not yet implemented (Phase 1 steps 3-4)"; exit 1
+wasm:           ## TinyEMU -> build/wasm/xemu.{mjs,wasm}
+	$(EMENV) $(MAKE) -C emu -f Makefile.wasm
 
-web:            ## WASM build + Vite page
-	@echo "web: not yet implemented (Phase 1 steps 6-7)"; exit 1
+firmware:       ## OpenSBI fw_jump -> build/fw_jump.bin (builder VM)
+	$(ORB) -m $(VM) image/build-opensbi.sh
 
-dev:            ## local server with COOP/COEP headers
-	@echo "dev: not yet implemented (Phase 1 step 8)"; exit 1
+kernel:         ## Linux -> build/Image (builder VM)
+	$(ORB) -m $(VM) image/build-kernel.sh
+
+rootfs:         ## Debian riscv64 -> build/rootfs.img (builder VM)
+	$(ORB) -m $(VM) sudo image/build-rootfs.sh
+
+image: firmware kernel rootfs vm-stop
+
+vm-stop:        ## stop the builder VM (8 GB Mac)
+	-$(ORB) stop $(VM)
+
+build/xiaonux.cfg: image/xiaonux.cfg.in
+	sed -e 's|@CMDLINE@|$(CMDLINE)|' -e 's|@RAM@|$(RAM)|' $< > $@
+
+boot-native: emu build/xiaonux.cfg   ## boot build/ files with native temu
+	python3 bench/boot-native.py build/emu-native/temu build/xiaonux.cfg --login root:root --cmd "uname -a"
+
+stage: wasm     ## build/ -> dist/vm (browser layout)
+	python3 image/stage-vm.py --bios build/fw_jump.bin --kernel build/Image \
+	  --rootfs build/rootfs.img --cmdline "$(CMDLINE)" --ram $(RAM)
+
+web:            ## production page -> web/dist
+	cd web && pnpm install --frozen-lockfile && pnpm build
+
+dev:            ## dev server with COOP/COEP on http://localhost:5180
+	cd web && pnpm install --frozen-lockfile && pnpm dev
+
+boot-chrome:    ## headless Chrome boot test against `make dev`
+	cd bench && node browser-boot.mjs --login root:root --cmd "uname -a" --cmd 'python3 -c "print(2+2)"' --cmd "df -h"
 
 clean:
-	rm -rf build/emu-native
+	rm -rf build/emu-native build/wasm dist/vm

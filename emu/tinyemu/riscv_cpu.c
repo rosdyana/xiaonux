@@ -841,6 +841,12 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
     case 0xf14:
         val = s->mhartid;
         break;
+    case 0xf11: /* mvendorid */
+    case 0xf12: /* marchid */
+    case 0xf13: /* mimpid */
+        /* xiaonux: required by the priv spec (may read 0); OpenSBI reads them */
+        val = 0;
+        break;
     default:
     invalid_csr:
 #ifdef DUMP_INVALID_CSR
