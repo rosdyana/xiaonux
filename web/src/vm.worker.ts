@@ -1,10 +1,12 @@
 /// <reference lib="webworker" />
 // Runs TinyEMU (WASM) and its main loop. The page only draws the terminal.
 import type { FromWorker, ToWorker } from './protocol';
+import { ChunkDisk, type DiskModule } from './disk';
 
 declare const self: DedicatedWorkerGlobalScope;
 
-interface Xemu {
+interface Xemu extends DiskModule {
+  disk?: ChunkDisk;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
   _console_queue_char(c: number): number;
   _console_resize(): void;
@@ -32,6 +34,7 @@ let sleepTimer: ReturnType<typeof setTimeout> | null = null;
 let cycles = 0;
 let lastStats = 0;
 let outTotal = 0;
+let disk: ChunkDisk | null = null;
 
 // MessageChannel gives a macrotask yield without setTimeout's 4 ms clamp.
 const chan = new MessageChannel();
@@ -77,6 +80,7 @@ function tick() {
     // Upper bound only: counts the cycle budget of slices that didn't idle.
     const mips = lastStats ? cycles / ((now - lastStats) * 1000) : 0;
     post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal });
+    if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;
     lastStats = now;
   }
@@ -93,10 +97,17 @@ function wake() {
   }
 }
 
-async function start(cfgUrl: string, ramMb: number, cmdline: string) {
+// boot.json: { cfg: "xiaonux.cfg", disk?: "disk-<sha256>.json" }
+interface BootDesc { cfg: string; disk?: string }
+
+async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false) {
   t0 = performance.now();
-  const base = new URL('.', new URL(cfgUrl, self.location.href)).href;
-  const { default: createXemu } = await import(/* @vite-ignore */ `${base}xemu.mjs`);
+  const bootAbs = new URL(bootUrl, self.location.href);
+  const base = new URL('.', bootAbs).href;
+  const [desc, { default: createXemu }] = await Promise.all([
+    fetch(bootAbs, { cache: 'no-cache' }).then((r) => r.json() as Promise<BootDesc>),
+    import(/* @vite-ignore */ `${base}xemu.mjs`),
+  ]);
   const mod: Xemu = await createXemu({
     locateFile: (p: string) => base + p,
     baseUrl: base,
@@ -114,14 +125,24 @@ async function start(cfgUrl: string, ramMb: number, cmdline: string) {
     },
   });
   vm = mod;
-  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [cfgUrl, ramMb, cmdline, 0]);
+  if (desc.disk) {
+    disk = await ChunkDisk.load(mod, base, desc.disk, (msg) => post({ type: 'log', message: msg }));
+    mod.disk = disk;
+    if (resetOnly) {
+      disk.reset();
+      post({ type: 'reset-done' });
+      return;
+    }
+    post({ type: 'disk', stats: disk.stats });
+  }
+  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [base + desc.cfg, ramMb, cmdline, 0]);
 }
 
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'start':
-      start(m.cfgUrl, m.ramMb, m.cmdline).catch((err) =>
+      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly).catch((err) =>
         post({ type: 'error', message: String(err?.stack ?? err) }),
       );
       break;
@@ -129,6 +150,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       for (const b of m.data) input.push(b);
       drainInput();
       wake();
+      break;
+    case 'reset':
+      // Stop the guest first so it can't write after the overlay is gone.
+      ready = false;
+      disk?.reset();
+      post({ type: 'reset-done' });
       break;
     case 'resize':
       if (vm) {

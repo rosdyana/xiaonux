@@ -13,7 +13,7 @@ header {
   padding: 8px 16px; border-bottom: 1px solid #222a33;
 }
 header strong { color: var(--accent); letter-spacing: 0.02em; }
-#status, #stats { color: var(--muted); font-variant-numeric: tabular-nums; }
+#status, #stats, #disk { color: var(--muted); font-variant-numeric: tabular-nums; }
 #stats { margin-left: auto; }
 button {
   font: inherit; color: var(--bg); background: var(--accent);
@@ -21,3 +21,4 @@ button {
 }
 button:disabled { opacity: 0.4; cursor: default; }
 #term { flex: 1; min-height: 0; padding: 8px 0 0 16px; }
+button.secondary { background: transparent; color: var(--muted); border: 1px solid #2c3540; }

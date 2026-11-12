@@ -6,7 +6,7 @@
 import { chromium, webkit } from 'playwright-core';
 
 const args = process.argv.slice(2);
-const opt = { browser: 'chrome', url: 'http://localhost:5180/?autoboot', login: '', cmds: [], timeout: 600, headed: false };
+const opt = { browser: 'chrome', url: 'http://localhost:5180/?autoboot', login: '', cmds: [], timeout: 600, headed: false, profile: '' };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '--browser') opt.browser = args[++i];
@@ -15,12 +15,19 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--cmd') opt.cmds.push(args[++i]);
   else if (a === '--timeout') opt.timeout = Number(args[++i]);
   else if (a === '--headed') opt.headed = true;
+  else if (a === '--profile') opt.profile = args[++i]; // persistent user data dir (keeps OPFS + Cache Storage)
 }
 
-const browser = opt.browser === 'webkit'
-  ? await webkit.launch({ headless: !opt.headed })
-  : await chromium.launch({ channel: 'chrome', headless: !opt.headed });
-const page = await browser.newPage();
+const engine = opt.browser === 'webkit' ? webkit : chromium;
+const launchOpts = { headless: !opt.headed, ...(opt.browser === 'webkit' ? {} : { channel: 'chrome' }) };
+let browser, page;
+if (opt.profile) {
+  browser = await engine.launchPersistentContext(opt.profile, launchOpts);
+  page = browser.pages()[0] ?? (await browser.newPage());
+} else {
+  browser = await engine.launch(launchOpts);
+  page = await browser.newPage();
+}
 
 page.on('console', (m) => {
   process.stderr.write('console: ' + m.text() + '\n');

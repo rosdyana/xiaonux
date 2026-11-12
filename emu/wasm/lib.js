@@ -6,7 +6,23 @@
 //   Module.onDownloading(bool)     a fetch is in flight
 //   Module.onFetch(url, bytes)     every completed fetch (for stats)
 //   Module.baseUrl                 base for relative URLs (the .cfg's directory)
+//   Module.disk                    chunked disk callbacks (Phase 2):
+//     fetchChunk(block, hashIndex), overlayRead(cluster, ptr) -> bool,
+//     overlayWrite(cluster, ptr), event(kind, block, value)
 addToLibrary({
+  js_fetch_chunk: function (block, hashIndex) {
+    Module.disk.fetchChunk(block, hashIndex);
+  },
+  js_overlay_read: function (cluster, ptr) {
+    return Module.disk.overlayRead(cluster, ptr) ? 1 : 0;
+  },
+  js_overlay_write: function (cluster, ptr) {
+    Module.disk.overlayWrite(cluster, ptr);
+  },
+  js_disk_event: function (kind, block, value) {
+    if (Module.disk.event) Module.disk.event(kind, block, value);
+  },
+
   console_write: function (opaque, buf, len) {
     Module.onConsole(HEAPU8.subarray(buf, buf + len));
   },

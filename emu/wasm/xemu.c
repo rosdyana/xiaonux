@@ -50,6 +50,9 @@ extern void net_recv_packet(EthernetDevice *bs,
                             const uint8_t *buf, int len);
 extern void vm_on_ready(void);
 
+/* blk_chunk.c */
+BlockDevice *blk_chunk_device(void);
+
 static uint8_t console_fifo[4096];
 static int console_fifo_windex;
 static int console_fifo_rindex;
@@ -159,10 +162,17 @@ static void init_vm_drive(void *arg)
     VirtMachineParams *p = s->p;
 
     if (p->drive_count > 0) {
+        BlockDevice *chunked = blk_chunk_device();
         assert(p->drive_count == 1);
-        p->tab_drive[0].block_dev =
-            block_device_init_http(p->tab_drive[0].filename,
-                                   HTTP_BLOCK_CACHE_KB, init_vm, s);
+        if (chunked) {
+            /* Phase 2 disk, set up by JS before vm_start */
+            p->tab_drive[0].block_dev = chunked;
+            init_vm(s);
+        } else {
+            p->tab_drive[0].block_dev =
+                block_device_init_http(p->tab_drive[0].filename,
+                                       HTTP_BLOCK_CACHE_KB, init_vm, s);
+        }
     } else {
         init_vm(s);
     }

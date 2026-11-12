@@ -5,14 +5,17 @@ import './style.css';
 import type { FromWorker, ToWorker } from './protocol';
 
 const params = new URLSearchParams(location.search);
-const CFG_URL = params.get('cfg') ?? '/vm/xiaonux.cfg';
-const RAM_MB = Number(params.get('ram') ?? 512);
+const BOOT_URL = params.get('boot') ?? '/vm/boot.json';
+const RAM_MB = Number(params.get('ram') ?? 0); // 0 = use the .cfg's memory_size
 const CMDLINE = params.get('cmdline') ?? '';
 
 const $ = (id: string) => document.getElementById(id)!;
 const statusEl = $('status');
 const statsEl = $('stats');
 const bootBtn = $('boot') as HTMLButtonElement;
+const resetBtn = $('reset') as HTMLButtonElement;
+const diskEl = $('disk');
+let diskStats: Record<string, unknown> = {};
 
 const term = new Terminal({
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -78,7 +81,21 @@ function boot() {
         break;
       case 'stats':
         statsEl.textContent = `heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
-        (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes };
+        (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats };
+        break;
+      case 'disk': {
+        const d = m.stats;
+        diskStats = d as unknown as Record<string, unknown>;
+        const mb = (n: number) => (n / 2 ** 20).toFixed(1);
+        diskEl.textContent = `disk ${mb(d.bytesNetwork)} MB net · ${mb(d.bytesCache)} MB cached · ${d.overlayClusters * 4} KB changed (${d.overlayBackend})`;
+        break;
+      }
+      case 'reset-done':
+        console.info('[xiaonux] machine reset: your changes were deleted');
+        location.reload();
+        break;
+      case 'log':
+        console.info(`[xiaonux] ${m.message}`);
         break;
       case 'error':
         statusEl.textContent = `error: ${m.message}`;
@@ -86,7 +103,7 @@ function boot() {
         break;
     }
   };
-  send({ type: 'start', cfgUrl: new URL(CFG_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE });
+  send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE });
   term.focus();
 }
 
@@ -98,6 +115,20 @@ term.onData((s) => {
 term.onResize(({ cols, rows }) => send({ type: 'resize', cols, rows }));
 window.addEventListener('resize', () => fit.fit());
 bootBtn.addEventListener('click', boot);
+resetBtn.addEventListener('click', () => {
+  if (!confirm('Delete all your files and changes in this machine?')) return;
+  resetBtn.disabled = true;
+  if (!worker) {
+    // Not booted: a worker that only opens the disk and clears the overlay.
+    worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e: MessageEvent<FromWorker>) => {
+      if (e.data.type === 'reset-done') location.reload();
+    };
+    send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, resetOnly: true });
+  } else {
+    send({ type: 'reset' });
+  }
+});
 if (params.has('autoboot')) boot();
 
 // For automation: read the terminal text and type into the guest.
