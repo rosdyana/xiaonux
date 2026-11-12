@@ -7,3 +7,4 @@ node_modules/
 *.tar.gz
 .DS_Store
 target/
+web/.env.local
