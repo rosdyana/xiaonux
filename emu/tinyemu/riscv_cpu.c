@@ -1351,7 +1351,7 @@ RISCVCPUState *riscv_cpu_init(PhysMemoryMap *mem_map, int max_xlen)
     const RISCVCPUClass *c;
     switch(max_xlen) {
         /* with emscripten we compile a single CPU */
-#if defined(EMSCRIPTEN)
+#if defined(EMSCRIPTEN) || defined(CONFIG_RISCV64_ONLY) /* xiaonux */
     case MAX_XLEN:
         c = &glue(riscv_cpu_class, MAX_XLEN);
         break;

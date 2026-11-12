@@ -35,6 +35,9 @@
 #ifndef _WIN32
 #include <termios.h>
 #include <sys/ioctl.h>
+#endif
+#if defined(__linux__)
+#define CONFIG_TAP /* xiaonux: TAP networking is Linux-only */
 #include <net/if.h>
 #include <linux/if_tun.h>
 #endif
@@ -346,7 +349,7 @@ static BlockDevice *block_device_init(const char *filename,
     return bs;
 }
 
-#ifndef _WIN32
+#ifdef CONFIG_TAP
 
 typedef struct {
     int fd;
@@ -450,7 +453,7 @@ static EthernetDevice *tun_open(const char *ifname)
     return net;
 }
 
-#endif /* !_WIN32 */
+#endif /* CONFIG_TAP */
 
 #ifdef CONFIG_SLIRP
 
@@ -788,7 +791,7 @@ int main(int argc, char **argv)
                 exit(1);
         } else
 #endif
-#ifndef _WIN32
+#ifdef CONFIG_TAP
         if (!strcmp(p->tab_eth[i].driver, "tap")) {
             p->tab_eth[i].net = tun_open(p->tab_eth[i].ifname);
             if (!p->tab_eth[i].net)

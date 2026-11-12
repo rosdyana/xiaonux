@@ -27,7 +27,11 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <stdarg.h>
+#ifdef __APPLE__
+#include <sys/mount.h> /* xiaonux: statfs lives here on macOS */
+#else
 #include <sys/statfs.h>
+#endif
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
