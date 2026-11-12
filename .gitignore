@@ -1,0 +1,8 @@
+build/
+dist/
+node_modules/
+*.img
+*.bin
+*.ext4
+*.tar.gz
+.DS_Store
