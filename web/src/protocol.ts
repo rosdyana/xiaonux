@@ -3,7 +3,7 @@ import type { DiskStats } from './disk';
 // Messages between the page and the VM worker.
 
 export type ToWorker =
-  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean }
+  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean; record?: boolean }
   | { type: 'input'; data: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'reset' }

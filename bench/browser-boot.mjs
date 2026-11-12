@@ -6,7 +6,7 @@
 import { chromium, webkit } from 'playwright-core';
 
 const args = process.argv.slice(2);
-const opt = { browser: 'chrome', url: 'http://localhost:5180/?autoboot', login: '', cmds: [], timeout: 600, headed: false, profile: '' };
+const opt = { browser: 'chrome', url: 'http://localhost:5180/?autoboot', login: '', cmds: [], timeout: 600, headed: false, profile: '', mbit: 0, rtt: 20 };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   if (a === '--browser') opt.browser = args[++i];
@@ -15,6 +15,8 @@ for (let i = 0; i < args.length; i++) {
   else if (a === '--cmd') opt.cmds.push(args[++i]);
   else if (a === '--timeout') opt.timeout = Number(args[++i]);
   else if (a === '--headed') opt.headed = true;
+  else if (a === '--mbit') opt.mbit = Number(args[++i]); // throttle download (Chrome only)
+  else if (a === '--rtt') opt.rtt = Number(args[++i]);
   else if (a === '--profile') opt.profile = args[++i]; // persistent user data dir (keeps OPFS + Cache Storage)
 }
 
@@ -48,6 +50,14 @@ async function waitFor(pred, timeoutS, what) {
   throw new Error(`timeout waiting for ${what}\n--- screen ---\n${await screen(30)}`);
 }
 
+if (opt.mbit && opt.browser !== 'webkit') {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false, latency: opt.rtt,
+    downloadThroughput: (opt.mbit * 1e6) / 8, uploadThroughput: (opt.mbit * 1e6) / 8,
+  });
+}
 const marks = () => page.evaluate(() => window.xiaonux?.marks ?? {});
 const result = { browser: opt.browser, ok: false };
 const t0 = Date.now();

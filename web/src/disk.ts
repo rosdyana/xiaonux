@@ -32,6 +32,8 @@ export interface DiskStats {
   overlayClusters: number;
   overlayBackend: 'opfs' | 'memory';
   errors: number;
+  /** hash indexes in first-fetch order (for building prefetch bundles) */
+  fetchOrder?: number[];
 }
 
 // Overlay storage (OPFS):
@@ -265,9 +267,16 @@ export class ChunkDisk {
 
   // ----- callbacks from C (via lib.js) -----
 
+  /** hash -> bytes promise for chunks in the prefetch bundle */
+  private bundled = new Map<string, Promise<Uint8Array | null>>();
+  record = false;
+
   fetchChunk = (block: number, hashIndex: number) => {
-    const url = `${this.base}chunks/${this.manifest.hashes[hashIndex]}.br`;
-    this.getChunk(url)
+    const hash = this.manifest.hashes[hashIndex];
+    const url = `${this.base}chunks/${hash}.br`;
+    if (this.record) (this.stats.fetchOrder ??= []).push(hashIndex);
+    const fromBundle = this.bundled.get(hash);
+    (fromBundle ? fromBundle.then((b) => b ?? this.getChunk(url)) : this.getChunk(url))
       .then((bytes) => this.deliver(block, bytes))
       .catch((e) => {
         this.stats.errors++;
@@ -326,8 +335,39 @@ export class ChunkDisk {
     this.mod._free(p);
   }
 
-  prefetch(blocks: number[]) {
-    for (const b of blocks) this.mod._blk_prefetch(b);
+  /**
+   * Fetch a prefetch bundle (chunks concatenated in first-use order) in one
+   * request and put each chunk in Cache Storage. Chunk fetches that arrive
+   * meanwhile wait for the bundle instead of making their own request.
+   */
+  async prefetchBundle(file: string, index: [string, number, number][]) {
+    const missing: [string, number, number][] = [];
+    for (const e of index) {
+      const url = `${this.base}chunks/${e[0]}.br`;
+      if (!(this.cache && (await this.cache.match(url)))) missing.push(e);
+    }
+    if (!missing.length) return 0;
+    const resolvers = new Map<string, (b: Uint8Array | null) => void>();
+    for (const [h] of missing) this.bundled.set(h, new Promise((r) => resolvers.set(h, r)));
+    let bytes = 0;
+    try {
+      const r = await fetch(this.base + file, { priority: 'low' } as RequestInit);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const all = new Uint8Array(await r.arrayBuffer());
+      bytes = all.length;
+      this.stats.bytesNetwork += bytes;
+      for (const [h, off, len] of missing) {
+        const b = all.slice(off, off + len);
+        this.cache?.put(`${this.base}chunks/${h}.br`, new Response(b)).catch(() => {});
+        resolvers.get(h)!(b);
+      }
+    } catch (e) {
+      this.onEvent(`prefetch bundle: ${e}`);
+      for (const r of resolvers.values()) r(null); // fall back to single fetches
+    } finally {
+      for (const [h] of missing) this.bundled.delete(h);
+    }
+    return bytes;
   }
 
   flush() {

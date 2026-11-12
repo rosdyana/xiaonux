@@ -110,6 +110,8 @@ interface BootDesc {
   cfg: string;
   disk?: string;
   snapshot?: { file: string; raw: number; cfg: string };
+  /** chunks the first commands need: [hash, offset, length] into file */
+  prefetch?: { file: string; index: [string, number, number][] };
 }
 
 // ----- guest agent (/dev/hvc1) -----
@@ -212,7 +214,7 @@ async function fetchCached(url: string): Promise<Uint8Array> {
   return b;
 }
 
-async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false) {
+async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false) {
   t0 = performance.now();
   const bootAbs = new URL(bootUrl, self.location.href);
   const base = new URL('.', bootAbs).href;
@@ -240,6 +242,12 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       ready = true;
       post({ type: 'ready', ms: Math.round(performance.now() - t0), restored: restored === 1 });
       yieldNow();
+      // Warm the chunks the first commands will need, without delaying the prompt.
+      if (desc.prefetch && disk && !record) {
+        const d = disk;
+        const pf = desc.prefetch;
+        setTimeout(() => d.prefetchBundle(pf.file, pf.index).then((n) => n && post({ type: 'log', message: `prefetched ${(n / 2 ** 20).toFixed(1)} MB` })), 50);
+      }
       if (restored === 1) afterRestore();
     },
   });
@@ -250,6 +258,7 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     disk = await ChunkDisk.load(mod, base, desc.disk, (msg) => post({ type: 'log', message: msg }));
     mod.disk = disk;
     disk.onWrite = scheduleSave;
+    disk.record = record;
     if (resetOnly) {
       disk.reset();
       post({ type: 'reset-done' });
@@ -283,7 +292,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'start':
-      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold).catch((err) =>
+      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold, m.record).catch((err) =>
         post({ type: 'error', message: String(err?.stack ?? err) }),
       );
       break;
