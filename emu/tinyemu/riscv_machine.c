@@ -39,6 +39,7 @@
 #include "cutils.h"
 #include "iomem.h"
 #include "riscv_cpu.h"
+#include "xn_jit.h"
 #include "virtio.h"
 #include "machine.h"
 
@@ -937,6 +938,10 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     ram_flags = 0;
     cpu_register_ram(s->mem_map, RAM_BASE_ADDR, p->ram_size, ram_flags);
     cpu_register_ram(s->mem_map, 0x00000000, LOW_RAM_SIZE, 0);
+#ifdef XN_JIT
+    /* after RAM exists: the translator keys pages relative to its base */
+    xn_jit_init(s->cpu_state, get_ram_ptr(s, RAM_BASE_ADDR, FALSE), s->ram_size);
+#endif
     s->rtc_real_time = p->rtc_real_time;
     if (p->rtc_real_time) {
         s->rtc_start_time = rtc_get_real_time(s);
@@ -1200,6 +1205,9 @@ static int riscv_machine_snapshot(RISCVMachine *m, XSnap *sn)
     }
     free(bitmap);
     if (!sn->saving && !sn->error) {
+#ifdef XN_JIT
+        xn_jit_reset(); /* RAM was replaced: all translations are stale */
+#endif
         /* code/data TLBs may map RAM we just rewrote */
         riscv_cpu_flush_tlb_write_range_ram(m->cpu_state, ram, m->ram_size);
     }

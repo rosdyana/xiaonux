@@ -30,6 +30,7 @@
 
 #include "cutils.h"
 #include "iomem.h"
+#include "xn_jit.h"
 
 static PhysMemoryRange *default_register_ram(PhysMemoryMap *s, uint64_t addr,
                                              uint64_t size, int devram_flags);
@@ -249,8 +250,13 @@ uint8_t *phys_mem_get_ram_ptr(PhysMemoryMap *map, uint64_t paddr, BOOL is_rw)
     if (!pr || !pr->is_ram)
         return NULL;
     offset = paddr - pr->addr;
-    if (is_rw)
+    if (is_rw) {
         phys_mem_set_dirty_bit(pr, offset);
+#ifdef XN_JIT
+        /* xiaonux: device (DMA) writes drop translated code in that page */
+        xn_jit_invalidate_host_page((uintptr_t)(pr->phys_mem + offset));
+#endif
+    }
     return pr->phys_mem + (uintptr_t)offset;
 }
 

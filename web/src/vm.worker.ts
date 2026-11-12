@@ -18,6 +18,9 @@ interface Xemu extends DiskModule {
   _net_can_write(): number;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
   _vm_insn_count(): number;
+  _xn_jit_set_enabled(on: number): void;
+  _xn_jit_set_check(on: number): void;
+  _xn_jit_stat(which: number): number;
   _console_queue_char(c: number): number;
   _console_resize(): void;
   ccall(name: string, ret: null, types: string[], args: unknown[]): void;
@@ -124,7 +127,8 @@ function tick() {
     const insns = vm._vm_insn_count();
     const mips = lastStats ? (insns - lastInsns) / ((now - lastStats) * 1000) : 0;
     lastInsns = insns;
-    post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal });
+    post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal,
+      jit: { blocks: vm._xn_jit_stat(0), modules: vm._xn_jit_stat(1), invalidated: vm._xn_jit_stat(2), resets: vm._xn_jit_stat(3) } });
     if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;
     lastStats = now;
@@ -255,7 +259,7 @@ async function fetchCached(url: string): Promise<Uint8Array> {
   return b;
 }
 
-async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false, netCfg?: NetConfig) {
+async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false, netCfg?: NetConfig, jit = true, jitCheck = false) {
   t0 = performance.now();
   const bootAbs = new URL(bootUrl, self.location.href);
   const base = new URL('.', bootAbs).href;
@@ -297,6 +301,8 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     },
   });
   vm = mod;
+  mod._xn_jit_set_enabled(jit ? 1 : 0); // ?jit=0 runs the plain interpreter
+  if (jitCheck) mod._xn_jit_set_check(1); // ?jit=check: lockstep against the interpreter
   net = new NetStack(
     (f) => {
       rxQueue.push(f);
@@ -352,7 +358,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'start':
-      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold, m.record, m.net).catch((err) =>
+      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold, m.record, m.net, m.jit ?? true, m.jitCheck ?? false).catch((err) =>
         post({ type: 'error', message: String(err?.stack ?? err) }),
       );
       break;

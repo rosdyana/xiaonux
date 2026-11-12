@@ -15,7 +15,7 @@ export interface NetConfig {
 // Messages between the page and the VM worker.
 
 export type ToWorker =
-  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean; record?: boolean; net?: NetConfig }
+  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean; record?: boolean; net?: NetConfig; jit?: boolean; jitCheck?: boolean }
   | { type: 'input'; data: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'reset' }
@@ -28,7 +28,7 @@ export type FromWorker =
   | { type: 'restored'; ms: number; agentOk: boolean }
   | { type: 'restart-cold' }
   | { type: 'fetch'; url: string; bytes: number }
-  | { type: 'stats'; mips: number; heapMb: number; outBytes: number }
+  | { type: 'stats'; mips: number; heapMb: number; outBytes: number; jit?: { blocks: number; modules: number; invalidated: number; resets: number } }
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }

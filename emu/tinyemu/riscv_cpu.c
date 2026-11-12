@@ -32,6 +32,7 @@
 #include "cutils.h"
 #include "iomem.h"
 #include "riscv_cpu.h"
+#include "xn_jit.h"
 
 #ifndef MAX_XLEN
 #error MAX_XLEN must be defined
@@ -478,6 +479,11 @@ int target_write_slow(RISCVCPUState *s, target_ulong addr,
             phys_mem_set_dirty_bit(pr, paddr - pr->addr);
             tlb_idx = (addr >> PG_SHIFT) & (TLB_SIZE - 1);
             ptr = pr->phys_mem + (uintptr_t)(paddr - pr->addr);
+#ifdef XN_JIT
+            /* xiaonux: a store to a page with translated code drops them */
+            if (xn_jit_page_has_code((uintptr_t)ptr))
+                xn_jit_invalidate_host_page((uintptr_t)ptr);
+#endif
             s->tlb_write[tlb_idx].vaddr = addr & ~PG_MASK;
             s->tlb_write[tlb_idx].mem_addend = (uintptr_t)ptr - addr;
             switch(size_log2) {
@@ -1245,6 +1251,15 @@ static inline uint32_t get_field1(uint32_t val, int src_pos,
 }
 
 #define XLEN 32
+#if defined(XN_JIT) && MAX_XLEN == 64
+/* xiaonux lockstep checker (debug): see xn_check_block() */
+int xn_step_mode;   /* interpreter refetches after every instruction */
+int xn_check_mode;  /* run translated blocks in lockstep with the interpreter */
+static int xn_log_on, xn_nlog, xn_mmio_touched;
+static struct { uint64_t addr, old; int log2; } xn_log[512];
+void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n);
+#endif
+
 #include "riscv_cpu_template.h"
 
 #if MAX_XLEN >= 64
@@ -1486,6 +1501,168 @@ void riscv_cpu_snapshot(RISCVCPUState *s, XSnap *sn)
         s->pending_exception = -1;
         s->n_cycles = 0;
         tlb_flush_all(s);
+    }
+}
+#endif
+
+#if defined(XN_JIT) && MAX_XLEN == 64
+/* xiaonux: slow paths for translated code. s->pc already points at the
+   faulting instruction; on an exception we raise it exactly as the
+   interpreter would and return 1 (the block then returns). */
+#include <emscripten.h>
+
+static void xn_note_mmio(RISCVCPUState *s, uint64_t addr, int access)
+{
+    target_ulong paddr;
+    PhysMemoryRange *pr;
+    if (!xn_log_on)
+        return;
+    if (get_phys_addr(s, &paddr, addr, access) == 0) {
+        pr = get_phys_mem_range(s->mem_map, paddr);
+        if (!pr || !pr->is_ram)
+            xn_mmio_touched = 1;
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE int xn_jit_ld(RISCVCPUState *s, uint64_t addr, int kind)
+{
+    static const uint8_t log2[7] = { 0, 1, 2, 3, 0, 1, 2 };
+    mem_uint_t v;
+    xn_note_mmio(s, addr, ACCESS_READ);
+    if (target_read_slow(s, &v, addr, log2[kind])) {
+        raise_exception2(s, s->pending_exception, s->pending_tval);
+        s->pending_exception = -1;
+        return 1;
+    }
+    switch (kind) {
+    case 0: s->xn_tmp = (int64_t)(int8_t)v; break;
+    case 1: s->xn_tmp = (int64_t)(int16_t)v; break;
+    case 2: s->xn_tmp = (int64_t)(int32_t)v; break;
+    case 3: s->xn_tmp = (uint64_t)v; break;
+    case 4: s->xn_tmp = (uint8_t)v; break;
+    case 5: s->xn_tmp = (uint16_t)v; break;
+    default: s->xn_tmp = (uint32_t)v; break;
+    }
+    return 0;
+}
+
+EMSCRIPTEN_KEEPALIVE int xn_jit_st(RISCVCPUState *s, uint64_t addr, uint64_t val, int size_log2)
+{
+    if (xn_log_on) {
+        mem_uint_t old;
+        xn_note_mmio(s, addr, ACCESS_WRITE);
+        if (!xn_mmio_touched && xn_nlog < 512 && target_read_slow(s, &old, addr, size_log2) == 0) {
+            xn_log[xn_nlog].addr = addr;
+            xn_log[xn_nlog].old = old;
+            xn_log[xn_nlog].log2 = size_log2;
+            xn_nlog++;
+        } else {
+            s->pending_exception = -1;
+            xn_mmio_touched = 1; /* can't undo: don't re-run this one */
+        }
+    }
+    if (target_write_slow(s, addr, val, size_log2)) {
+        raise_exception2(s, s->pending_exception, s->pending_tval);
+        s->pending_exception = -1;
+        return 1;
+    }
+    return 0;
+}
+
+EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_mulh(int64_t a, int64_t b, int kind)
+{
+    switch (kind) {
+    case 0: return (uint64_t)(((__int128)a * (__int128)b) >> 64);
+    case 1: return (uint64_t)(((__int128)a * (__int128)(unsigned __int128)(uint64_t)b) >> 64);
+    default: return (uint64_t)(((unsigned __int128)(uint64_t)a * (uint64_t)b) >> 64);
+    }
+}
+
+/* RISC-V division semantics: no traps; x/0 = -1 (or all ones), x%0 = x,
+   INT_MIN/-1 = INT_MIN, INT_MIN%-1 = 0. Kinds 4-7 are the 32-bit W forms. */
+EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_div(int64_t a, int64_t b, int kind)
+{
+    switch (kind) {
+    case 0: if (b == 0) return -1; if (a == INT64_MIN && b == -1) return a; return a / b;
+    case 1: if (b == 0) return -1; return (uint64_t)a / (uint64_t)b;
+    case 2: if (b == 0) return a; if (a == INT64_MIN && b == -1) return 0; return a % b;
+    case 3: if (b == 0) return a; return (uint64_t)a % (uint64_t)b;
+    case 4: { int32_t x = a, y = b; if (y == 0) return -1; if (x == INT32_MIN && y == -1) return (int64_t)x; return (int64_t)(x / y); }
+    case 5: { uint32_t x = a, y = b; if (y == 0) return -1; return (int64_t)(int32_t)(x / y); }
+    case 6: { int32_t x = a, y = b; if (y == 0) return (int64_t)x; if (x == INT32_MIN && y == -1) return 0; return (int64_t)(x % y); }
+    default: { uint32_t x = a, y = b; if (y == 0) return (int64_t)(int32_t)x; return (int64_t)(int32_t)(x % y); }
+    }
+}
+#endif
+
+#if defined(XN_JIT) && MAX_XLEN == 64
+/* Run a translated block, undo it, re-run the same n instructions on the
+   interpreter (refetching after each), and report any difference. The
+   interpreter's result is kept. */
+typedef struct {
+    target_ulong pc, reg[32], mstatus, mepc, mcause, mtval, sepc, scause, stval;
+    uint8_t priv;
+} XnCpu;
+
+static void xn_cpu_save(RISCVCPUState *s, XnCpu *c)
+{
+    memset(c, 0, sizeof(*c)); /* padding is compared too */
+    c->pc = s->pc; memcpy(c->reg, s->reg, sizeof(c->reg)); c->priv = s->priv;
+    c->mstatus = s->mstatus; c->mepc = s->mepc; c->mcause = s->mcause; c->mtval = s->mtval;
+    c->sepc = s->sepc; c->scause = s->scause; c->stval = s->stval;
+}
+
+static void xn_cpu_load(RISCVCPUState *s, const XnCpu *c)
+{
+    s->pc = c->pc; memcpy(s->reg, c->reg, sizeof(c->reg));
+    if (s->priv != c->priv) { s->priv = c->priv; tlb_flush_all(s); }
+    s->mstatus = c->mstatus; s->mepc = c->mepc; s->mcause = c->mcause; s->mtval = c->mtval;
+    s->sepc = c->sepc; s->scause = c->scause; s->stval = c->stval;
+}
+
+static void glue(riscv_cpu_interp_x, 64)(RISCVCPUState *s, int n_cycles1);
+
+void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
+{
+    static int reports;
+    XnCpu before, jit, interp;
+    int ncyc = s->n_cycles, i;
+    uint64_t icount = s->insn_counter;
+
+    xn_cpu_save(s, &before);
+    xn_log_on = 1; xn_nlog = 0; xn_mmio_touched = 0;
+    f(s);
+    xn_log_on = 0;
+    if (xn_mmio_touched)
+        return; /* device side effects can't be replayed: trust the block */
+    xn_cpu_save(s, &jit);
+    for (i = xn_nlog - 1; i >= 0; i--)
+        target_write_slow(s, xn_log[i].addr, xn_log[i].old, xn_log[i].log2);
+    xn_cpu_load(s, &before);
+
+    xn_step_mode = 1;
+    glue(riscv_cpu_interp_x, 64)(s, n);
+    xn_step_mode = 0;
+    s->n_cycles = ncyc - n;
+    s->insn_counter = icount;
+    xn_cpu_save(s, &interp);
+
+    if (memcmp(&jit, &interp, sizeof(jit)) != 0 && reports < 20) {
+        reports++;
+        fprintf(stderr, "[xn-check] MISMATCH block pc=%llx n=%d code=", (unsigned long long)before.pc, n);
+        for (i = 0; i < 16; i++) fprintf(stderr, "%02x", code[i]);
+        fprintf(stderr, " | jit pc=%llx interp pc=%llx priv %d/%d scause %llx/%llx", (unsigned long long)jit.pc,
+                (unsigned long long)interp.pc, jit.priv, interp.priv, (unsigned long long)jit.scause,
+                (unsigned long long)interp.scause);
+        for (i = 1; i < 32; i++)
+            if (jit.reg[i] != interp.reg[i])
+                fprintf(stderr, " | x%d jit=%llx interp=%llx (before %llx)", i, (unsigned long long)jit.reg[i],
+                        (unsigned long long)interp.reg[i], (unsigned long long)before.reg[i]);
+        fprintf(stderr, "\n");
+        {
+            extern void xn_jit_dump(int fn);
+            xn_jit_dump((int)(uintptr_t)f);
+        }
     }
 }
 #endif

@@ -232,6 +232,7 @@ struct RISCVCPUState {
     uint32_t scounteren;
 
     target_ulong load_res; /* for atomic LR/SC */
+    uint64_t xn_tmp; /* xiaonux: translator helper result */
 
     PhysMemoryMap *mem_map;
 

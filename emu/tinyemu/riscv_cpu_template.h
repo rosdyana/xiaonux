@@ -266,6 +266,24 @@ static void no_inline glue(riscv_cpu_interp_x, XLEN)(RISCVCPUState *s,
                 if (unlikely(target_read_insn_slow(s, &ptr, addr)))
                     goto mmu_exception;
             }
+#if defined(XN_JIT) && XLEN == 64
+            /* xiaonux: run a translated block if we have one and the
+               cycle budget covers it (interrupts are checked between blocks) */
+            {
+                int xn_n;
+                xn_block_fn xn_f = xn_jit_lookup(ptr, &xn_n);
+                if (xn_f && s->n_cycles >= xn_n && !xn_step_mode) {
+                    if (unlikely(xn_check_mode))
+                        xn_check_block(s, xn_f, ptr, xn_n);
+                    else
+                        xn_f(s);
+                    code_ptr = NULL;
+                    code_end = NULL;
+                    code_to_pc_addend = s->pc;
+                    continue;
+                }
+            }
+#endif
             code_ptr = ptr;
             code_end = ptr + (PG_MASK - 1 - (addr & PG_MASK));
             code_to_pc_addend = addr - (uintptr_t)code_ptr;
@@ -1709,6 +1727,11 @@ static void no_inline glue(riscv_cpu_interp_x, XLEN)(RISCVCPUState *s,
             goto illegal_insn;
         }
         /* update PC for next instruction */
+#if defined(XN_JIT) && XLEN == 64
+        /* lockstep checker: stop after every instruction */
+        if (unlikely(xn_step_mode))
+            code_end = code_ptr;
+#endif
     jump_insn: ;
     } /* end of main loop */
  illegal_insn:

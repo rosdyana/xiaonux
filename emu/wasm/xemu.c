@@ -39,6 +39,7 @@
 #include "machine.h"
 #include "list.h"
 #include <brotli/decode.h>
+#include "xn_jit.h"
 
 /* xiaonux: worker-oriented front end, derived from TinyEMU's jsemu.c.
    Terminal only (no framebuffer/input devices). The JS side drives the
@@ -372,6 +373,9 @@ EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
             break;
         virt_machine_interp(m, chunk_cycles);
         done += chunk_cycles;
+#ifdef XN_JIT
+        xn_jit_flush(); /* compile blocks that became hot */
+#endif
     }
     return delay;
 }
