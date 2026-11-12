@@ -1,0 +1,252 @@
+/*
+ * JS emulator main
+ * 
+ * Copyright (c) 2016-2017 Fabrice Bellard
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <inttypes.h>
+#include <assert.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <unistd.h>
+#include <time.h>
+#include <emscripten.h>
+
+#include "cutils.h"
+#include "iomem.h"
+#include "virtio.h"
+#include "machine.h"
+#include "list.h"
+
+/* xiaonux: worker-oriented front end, derived from TinyEMU's jsemu.c.
+   Terminal only (no framebuffer/input devices). The JS side drives the
+   main loop by calling vm_run_slice() and schedules the next call itself. */
+
+/* provided in lib.js */
+extern void console_write(void *opaque, const uint8_t *buf, int len);
+extern void console_get_size(int *pw, int *ph);
+extern void net_recv_packet(EthernetDevice *bs,
+                            const uint8_t *buf, int len);
+extern void vm_on_ready(void);
+
+static uint8_t console_fifo[4096];
+static int console_fifo_windex;
+static int console_fifo_rindex;
+static int console_fifo_count;
+static BOOL console_resize_pending;
+
+static VirtMachine *global_vm;
+static BOOL global_carrier_state;
+
+static int console_read(void *opaque, uint8_t *buf, int len)
+{
+    int out_len, l;
+    len = min_int(len, console_fifo_count);
+    console_fifo_count -= len;
+    out_len = 0;
+    while (len != 0) {
+        l = min_int(len, sizeof(console_fifo) - console_fifo_rindex);
+        memcpy(buf + out_len, console_fifo + console_fifo_rindex, l);
+        len -= l;
+        out_len += l;
+        console_fifo_rindex += l;
+        if (console_fifo_rindex == sizeof(console_fifo))
+            console_fifo_rindex = 0;
+    }
+    return out_len;
+}
+
+/* called from JS; returns 0 when the FIFO is full */
+EMSCRIPTEN_KEEPALIVE int console_queue_char(int c)
+{
+    if (console_fifo_count >= sizeof(console_fifo))
+        return 0;
+    console_fifo[console_fifo_windex] = c;
+    if (++console_fifo_windex == sizeof(console_fifo))
+        console_fifo_windex = 0;
+    console_fifo_count++;
+    return 1;
+}
+
+/* called from JS when the terminal size changes */
+EMSCRIPTEN_KEEPALIVE void console_resize(void)
+{
+    console_resize_pending = TRUE;
+}
+
+/* called from JS (Phase 3) */
+EMSCRIPTEN_KEEPALIVE void net_write_packet(const uint8_t *buf, int buf_len)
+{
+    EthernetDevice *net;
+    if (!global_vm)
+        return;
+    net = global_vm->net;
+    if (net)
+        net->device_write_packet(net, buf, buf_len);
+}
+
+EMSCRIPTEN_KEEPALIVE void net_set_carrier(BOOL carrier_state)
+{
+    EthernetDevice *net;
+    global_carrier_state = carrier_state;
+    if (global_vm && global_vm->net) {
+        net = global_vm->net;
+        net->device_set_carrier(net, carrier_state);
+    }
+}
+
+static CharacterDevice *console_init(void)
+{
+    CharacterDevice *dev;
+    console_resize_pending = TRUE;
+    dev = mallocz(sizeof(*dev));
+    dev->write_data = console_write;
+    dev->read_data = console_read;
+    return dev;
+}
+
+typedef struct {
+    VirtMachineParams *p;
+    int ram_size;
+    char *cmdline;
+    BOOL has_network;
+} VMStartState;
+
+static void init_vm(void *arg);
+static void init_vm_drive(void *arg);
+
+/* Max RAM (KB) the HTTP block device may use to cache disk blocks. */
+#define HTTP_BLOCK_CACHE_KB 131072
+
+EMSCRIPTEN_KEEPALIVE void vm_start(const char *url, int ram_size_mb,
+                                   const char *cmdline, BOOL has_network)
+{
+    VMStartState *s;
+
+    s = mallocz(sizeof(*s));
+    s->ram_size = ram_size_mb;
+    s->cmdline = strdup(cmdline ? cmdline : "");
+    s->has_network = has_network;
+    s->p = mallocz(sizeof(VirtMachineParams));
+    virt_machine_set_defaults(s->p);
+    virt_machine_load_config_file(s->p, url, init_vm_drive, s);
+}
+
+static void init_vm_drive(void *arg)
+{
+    VMStartState *s = arg;
+    VirtMachineParams *p = s->p;
+
+    if (p->drive_count > 0) {
+        assert(p->drive_count == 1);
+        p->tab_drive[0].block_dev =
+            block_device_init_http(p->tab_drive[0].filename,
+                                   HTTP_BLOCK_CACHE_KB, init_vm, s);
+    } else {
+        init_vm(s);
+    }
+}
+
+static void init_vm(void *arg)
+{
+    VMStartState *s = arg;
+    VirtMachine *m;
+    VirtMachineParams *p = s->p;
+    int i;
+
+    p->rtc_real_time = TRUE;
+    if (s->ram_size > 0)
+        p->ram_size = (uint64_t)s->ram_size << 20;
+    if (s->cmdline[0] != '\0')
+        vm_add_cmdline(s->p, s->cmdline);
+    p->console = console_init();
+
+    if (p->eth_count > 0 && !s->has_network) {
+        for(i = 0; i < p->eth_count; i++) {
+            free(p->tab_eth[i].ifname);
+            free(p->tab_eth[i].driver);
+        }
+        p->eth_count = 0;
+    }
+    if (p->eth_count > 0) {
+        EthernetDevice *net;
+        assert(p->eth_count == 1);
+        net = mallocz(sizeof(EthernetDevice));
+        net->mac_addr[0] = 0x02;
+        for(i = 1; i < 6; i++)
+            net->mac_addr[i] = (int)(emscripten_random() * 256);
+        net->write_packet = net_recv_packet;
+        net->opaque = NULL;
+        p->tab_eth[0].net = net;
+    }
+
+    m = virt_machine_init(p);
+    global_vm = m;
+    virt_machine_free_config(s->p);
+    if (m->net)
+        m->net->device_set_carrier(m->net, global_carrier_state);
+    free(s->p);
+    free(s->cmdline);
+    free(s);
+    vm_on_ready();
+}
+
+#define MAX_SLEEP_TIME 10 /* ms */
+
+/* Run the guest for up to max_cycles instructions (in chunks of
+   chunk_cycles, stopping early when the guest idles). Returns -1 if the
+   VM isn't ready, 0 if the guest is still runnable, else the number of
+   ms the guest is asleep for (waiting on its timer). */
+EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
+{
+    VirtMachine *m = global_vm;
+    int delay, done;
+
+    if (!m)
+        return -1;
+    if (m->console_dev && virtio_console_can_write_data(m->console_dev)) {
+        uint8_t buf[512];
+        int ret, len;
+        len = virtio_console_get_write_len(m->console_dev);
+        len = min_int(len, sizeof(buf));
+        ret = m->console->read_data(m->console->opaque, buf, len);
+        if (ret > 0)
+            virtio_console_write_data(m->console_dev, buf, ret);
+        if (console_resize_pending) {
+            int w, h;
+            console_get_size(&w, &h);
+            virtio_console_resize_event(m->console_dev, w, h);
+            console_resize_pending = FALSE;
+        }
+    }
+    done = 0;
+    for(;;) {
+        delay = virt_machine_get_sleep_duration(m, MAX_SLEEP_TIME);
+        if (delay != 0 || done >= max_cycles)
+            break;
+        virt_machine_interp(m, chunk_cycles);
+        done += chunk_cycles;
+    }
+    return delay;
+}

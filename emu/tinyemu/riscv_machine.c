@@ -657,6 +657,16 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
 
     fdt_begin_node(s, "htif");
     fdt_prop_str(s, "compatible", "ucb,htif0");
+    /* xiaonux: tell OpenSBI where the MMIO fromhost/tohost registers are
+       (reg[0] = fromhost, reg[1] = tohost). Without it OpenSBI uses its
+       own in-RAM tohost/fromhost symbols, which TinyEMU never sees. */
+    {
+        uint32_t r[8] = {
+            0, HTIF_BASE_ADDR + 8, 0, 8,
+            0, HTIF_BASE_ADDR + 0, 0, 8,
+        };
+        fdt_prop_tab_u32(s, "reg", r, 8);
+    }
     fdt_end_node(s); /* htif */
 
     fdt_begin_node(s, "soc");

@@ -2,7 +2,7 @@
 #define FBUF_H
 
 typedef struct {
-#if defined(EMSCRIPTEN)
+#if defined(EMSCRIPTEN) && !defined(XIAONUX_C_FBUF) /* xiaonux */
     int handle;
 #else
     uint8_t *data;

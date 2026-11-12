@@ -266,7 +266,7 @@ static void fs_error_archive(FSOpenInfo *oi);
 static void dump_loaded_file(FSDevice *fs1, FSINode *n);
 #endif
 
-#if !defined(EMSCRIPTEN)
+#if !defined(EMSCRIPTEN) || defined(XIAONUX_C_FBUF) /* xiaonux */
 /* file buffer (the content of the buffer can be stored elsewhere) */
 void file_buffer_init(FileBuffer *bs)
 {

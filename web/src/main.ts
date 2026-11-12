@@ -1,0 +1,115 @@
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
+import './style.css';
+import type { FromWorker, ToWorker } from './protocol';
+
+const params = new URLSearchParams(location.search);
+const CFG_URL = params.get('cfg') ?? '/vm/xiaonux.cfg';
+const RAM_MB = Number(params.get('ram') ?? 512);
+const CMDLINE = params.get('cmdline') ?? '';
+
+const $ = (id: string) => document.getElementById(id)!;
+const statusEl = $('status');
+const statsEl = $('stats');
+const bootBtn = $('boot') as HTMLButtonElement;
+
+const term = new Terminal({
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 14,
+  cursorBlink: true,
+  convertEol: false,
+  scrollback: 5000,
+});
+const fit = new FitAddon();
+term.loadAddon(fit);
+term.open($('term'));
+fit.fit();
+
+let worker: Worker | null = null;
+const send = (m: ToWorker, transfer: Transferable[] = []) => worker?.postMessage(m, transfer);
+
+// Boot timing: from click to the first shell prompt on the console.
+let tBoot = 0;
+let bytesFetched = 0;
+let marks: Record<string, number> = {};
+let tail = '';
+const decoder = new TextDecoder();
+
+function mark(name: string) {
+  if (marks[name] !== undefined) return;
+  marks[name] = Math.round(performance.now() - tBoot);
+  render();
+  console.info(`[xiaonux] ${name} at ${marks[name]} ms`);
+  (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched };
+}
+
+function render() {
+  const parts = Object.entries(marks).map(([k, v]) => `${k} ${(v / 1000).toFixed(2)}s`);
+  statusEl.textContent = parts.join(' · ') || 'booting…';
+}
+
+function watchPrompts(bytes: Uint8Array) {
+  tail = (tail + decoder.decode(bytes, { stream: true })).slice(-200);
+  if (/login: ?$/.test(tail)) mark('login');
+  if (/[#$] ?$/.test(tail) && marks.login !== undefined) mark('prompt');
+}
+
+function boot() {
+  bootBtn.disabled = true;
+  tBoot = performance.now();
+  marks = {};
+  bytesFetched = 0;
+  render();
+  worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
+  worker.onmessage = (e: MessageEvent<FromWorker>) => {
+    const m = e.data;
+    switch (m.type) {
+      case 'console':
+        term.write(m.data);
+        watchPrompts(m.data);
+        break;
+      case 'ready':
+        mark('vm');
+        send({ type: 'resize', cols: term.cols, rows: term.rows });
+        break;
+      case 'fetch':
+        bytesFetched += m.bytes;
+        break;
+      case 'stats':
+        statsEl.textContent = `${m.mips} MIPS · heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
+        (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes };
+        break;
+      case 'error':
+        statusEl.textContent = `error: ${m.message}`;
+        term.write(`\r\n\x1b[31m${m.message}\x1b[0m\r\n`);
+        break;
+    }
+  };
+  send({ type: 'start', cfgUrl: new URL(CFG_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE });
+  term.focus();
+}
+
+const encoder = new TextEncoder();
+term.onData((s) => {
+  const data = encoder.encode(s);
+  send({ type: 'input', data }, [data.buffer]);
+});
+term.onResize(({ cols, rows }) => send({ type: 'resize', cols, rows }));
+window.addEventListener('resize', () => fit.fit());
+bootBtn.addEventListener('click', boot);
+if (params.has('autoboot')) boot();
+
+// For automation: read the terminal text and type into the guest.
+(window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {
+  const b = term.buffer.active;
+  const end = b.baseY + b.cursorY + 1;
+  const lines: string[] = [];
+  for (let i = Math.max(0, end - n); i < end; i++) lines.push(b.getLine(i)?.translateToString(true) ?? '');
+  return lines.join('\n');
+};
+// For automation: type a line into the guest.
+(window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = (s: string) => {
+  const data = encoder.encode(s);
+  send({ type: 'input', data }, [data.buffer]);
+};

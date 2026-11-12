@@ -1,0 +1,43 @@
+# WASM build of TinyEMU (riscv64 only) for a Web Worker.
+# Needs emcc on PATH (source ~/emsdk/emsdk_env.sh). Output: ../build/wasm/xemu.{mjs,wasm}
+
+SRC := tinyemu
+OUT := ../build/wasm
+EMCC ?= emcc
+
+CFLAGS := -O3 -flto -Wall -Wno-unused-but-set-variable -Wno-deprecated-non-prototype \
+  -fno-strict-aliasing -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE \
+  -DCONFIG_VERSION=\"$(shell cat $(SRC)/VERSION)\" \
+  -DEMSCRIPTEN -DXIAONUX_C_FBUF -DCONFIG_FS_NET -DMAX_XLEN=64 -DCONFIG_RISCV_MAX_XLEN=64 -I$(SRC) -MMD
+
+# Guest RAM is malloc'd inside the heap, so memory grows to fit the
+# configured guest (512 MB + disk block cache + overhead).
+LDFLAGS := -O3 -flto -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker \
+  -sEXPORT_NAME=createXemu -sNO_EXIT_RUNTIME=1 -sFILESYSTEM=0 \
+  -sINITIAL_MEMORY=64MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB \
+  -sEXPORTED_FUNCTIONS=_vm_start,_vm_run_slice,_console_queue_char,_console_resize,_net_write_packet,_net_set_carrier,_malloc,_free \
+  -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8 \
+  --js-library wasm/lib.js
+
+OBJS := wasm/xemu softfp virtio fs fs_net fs_wget fs_utils simplefb pci json \
+  block_net iomem cutils aes sha256 riscv_cpu riscv_machine machine
+OBJFILES := $(addprefix $(OUT)/obj/,$(addsuffix .o,$(notdir $(OBJS))))
+
+all: $(OUT)/xemu.mjs
+
+$(OUT)/xemu.mjs: $(OBJFILES) wasm/lib.js
+	$(EMCC) $(LDFLAGS) -o $@ $(OBJFILES)
+
+$(OUT)/obj/xemu.o: wasm/xemu.c
+	@mkdir -p $(dir $@)
+	$(EMCC) $(CFLAGS) -c -o $@ $<
+
+$(OUT)/obj/%.o: $(SRC)/%.c
+	@mkdir -p $(dir $@)
+	$(EMCC) $(CFLAGS) -c -o $@ $<
+
+clean:
+	rm -rf $(OUT)
+
+-include $(wildcard $(OUT)/obj/*.d)
+.PHONY: all clean
