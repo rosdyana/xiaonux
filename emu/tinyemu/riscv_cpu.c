@@ -185,10 +185,18 @@ PHYS_MEM_READ_WRITE(64, uint64_t)
 
 /* access = 0: read, 1 = write, 2 = code. Set the exception_pending
    field if necessary. return 0 if OK, -1 if translation error */
+#ifdef XIAONUX_STATS
+uint64_t xn_stat_walks, xn_stat_priv, xn_stat_exc[32], xn_stat_irq, xn_stat_insn_slow;
+#define XN_STAT(x) (x)
+#else
+#define XN_STAT(x) ((void)0)
+#endif
+
 static int get_phys_addr(RISCVCPUState *s,
                          target_ulong *ppaddr, target_ulong vaddr,
                          int access)
 {
+    XN_STAT(xn_stat_walks++);
     int mode, levels, pte_bits, pte_idx, pte_mask, pte_size_log2, xwr, priv;
     int need_write, vaddr_shift, i, pte_addr_bits;
     target_ulong pte_addr, pte, vaddr_mask, paddr;
@@ -540,6 +548,7 @@ static no_inline __exception int target_read_insn_slow(RISCVCPUState *s,
                                                        uint8_t **pptr,
                                                        target_ulong addr)
 {
+    XN_STAT(xn_stat_insn_slow++);
     int tlb_idx;
     target_ulong paddr;
     uint8_t *ptr;
@@ -1040,6 +1049,7 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
 
 static void set_priv(RISCVCPUState *s, int priv)
 {
+    XN_STAT(s->priv != priv ? xn_stat_priv++ : 0);
     if (s->priv != priv) {
         tlb_flush_all(s);
 #if MAX_XLEN >= 64
@@ -1062,6 +1072,7 @@ static void set_priv(RISCVCPUState *s, int priv)
 static void raise_exception2(RISCVCPUState *s, uint32_t cause,
                              target_ulong tval)
 {
+    XN_STAT((cause & CAUSE_INTERRUPT) ? xn_stat_irq++ : xn_stat_exc[cause & 31]++);
     BOOL deleg;
     target_ulong causel;
     
@@ -1275,6 +1286,23 @@ static void glue(riscv_cpu_interp, MAX_XLEN)(RISCVCPUState *s, int n_cycles)
             abort();
         }
     }
+#ifdef XIAONUX_STATS
+    {
+        static uint64_t next_report;
+        if (s->insn_counter >= next_report) {
+            next_report = s->insn_counter + 1000000000ULL;
+            fprintf(stderr, "[stats] insn=%lluM walks=%llu priv=%llu irq=%llu insn_slow=%llu exc:",
+                    (unsigned long long)(s->insn_counter / 1000000), (unsigned long long)xn_stat_walks,
+                    (unsigned long long)xn_stat_priv, (unsigned long long)xn_stat_irq,
+                    (unsigned long long)xn_stat_insn_slow);
+            for (int k = 0; k < 32; k++)
+                if (xn_stat_exc[k]) fprintf(stderr, " %d=%llu", k, (unsigned long long)xn_stat_exc[k]);
+            fprintf(stderr, "\r\n");
+            xn_stat_walks = xn_stat_priv = xn_stat_irq = xn_stat_insn_slow = 0;
+            memset(xn_stat_exc, 0, sizeof(xn_stat_exc));
+        }
+    }
+#endif
 #ifdef XIAONUX_DEBUG_PC
     {
         static uint64_t next;

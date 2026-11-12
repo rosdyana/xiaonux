@@ -6,7 +6,7 @@ SRC := tinyemu
 OUT := ../build/emu-native
 CC  ?= cc
 
-CFLAGS := -Icompat -O2 -g -Wall -Wno-unused-but-set-variable -Wno-deprecated-non-prototype \
+CFLAGS := -Icompat -O3 -g -Wall -Wno-unused-but-set-variable -Wno-deprecated-non-prototype \
   -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_GNU_SOURCE \
   -DCONFIG_VERSION=\"$(shell cat $(SRC)/VERSION)\" \
   -DCONFIG_RISCV_MAX_XLEN=64 -DCONFIG_RISCV64_ONLY -DCONFIG_SLIRP -MMD

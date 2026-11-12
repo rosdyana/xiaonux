@@ -184,8 +184,8 @@ async function boot(forceCold = false) {
         bytesFetched += m.bytes;
         break;
       case 'stats':
-        statsEl.textContent = `heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
-        (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats };
+        statsEl.textContent = `${m.mips} MIPS · heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
+        (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats };
         break;
       case 'disk': {
         const d = m.stats;

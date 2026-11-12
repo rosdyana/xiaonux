@@ -55,6 +55,7 @@ extern void agent_output(const uint8_t *buf, int len);
 /* riscv_machine.c */
 int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen);
 int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len);
+uint64_t riscv_machine_insn_count(VirtMachine *s1);
 
 /* blk_chunk.c */
 BlockDevice *blk_chunk_device(void);
@@ -113,6 +114,12 @@ EMSCRIPTEN_KEEPALIVE void net_write_packet(const uint8_t *buf, int buf_len)
     net = global_vm->net;
     if (net)
         net->device_write_packet(net, buf, buf_len);
+}
+
+/* called from JS: guest instructions retired so far */
+EMSCRIPTEN_KEEPALIVE double vm_insn_count(void)
+{
+    return global_vm ? (double)riscv_machine_insn_count(global_vm) : 0;
 }
 
 /* called from JS: can the guest take another frame right now? */

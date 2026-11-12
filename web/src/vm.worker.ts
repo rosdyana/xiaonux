@@ -17,6 +17,7 @@ interface Xemu extends DiskModule {
   _net_write_packet(ptr: number, len: number): void;
   _net_can_write(): number;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
+  _vm_insn_count(): number;
   _console_queue_char(c: number): number;
   _console_resize(): void;
   ccall(name: string, ret: null, types: string[], args: unknown[]): void;
@@ -43,6 +44,7 @@ let sleepTimer: ReturnType<typeof setTimeout> | null = null;
 let cycles = 0;
 let lastStats = 0;
 let outTotal = 0;
+let lastInsns = 0;
 let disk: ChunkDisk | null = null;
 
 // ----- network -----
@@ -68,7 +70,17 @@ function makeExit(cfg: NetConfig | undefined): Exit {
 
 // MessageChannel gives a macrotask yield without setTimeout's 4 ms clamp.
 const chan = new MessageChannel();
-chan.port1.onmessage = () => tick();
+chan.port1.onmessage = () => safeTick();
+
+// An exception in the run loop would otherwise just stop the guest silently.
+function safeTick() {
+  try {
+    tick();
+  } catch (e) {
+    ready = false;
+    post({ type: 'error', message: `VM stopped: ${(e as Error)?.stack ?? e}` });
+  }
+}
 const yieldNow = () => chan.port2.postMessage(0);
 
 function flushOutput() {
@@ -108,8 +120,10 @@ function tick() {
 
   const now = performance.now();
   if (now - lastStats > 1000) {
-    // Upper bound only: counts the cycle budget of slices that didn't idle.
-    const mips = lastStats ? cycles / ((now - lastStats) * 1000) : 0;
+    // Real rate: guest instructions retired per wall-clock microsecond.
+    const insns = vm._vm_insn_count();
+    const mips = lastStats ? (insns - lastInsns) / ((now - lastStats) * 1000) : 0;
+    lastInsns = insns;
     post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal });
     if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;
@@ -117,7 +131,7 @@ function tick() {
   }
 
   if (delay === 0) yieldNow();
-  else sleepTimer = setTimeout(tick, Math.max(1, delay));
+  else sleepTimer = setTimeout(safeTick, Math.max(1, delay));
 }
 
 function wake() {

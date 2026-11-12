@@ -1225,3 +1225,10 @@ int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len)
     XSnap sn = { .saving = 0, .buf = (uint8_t *)buf, .len = len };
     return riscv_machine_snapshot((RISCVMachine *)s1, &sn);
 }
+
+/* xiaonux: guest instructions retired so far (for a real MIPS figure) */
+uint64_t riscv_machine_insn_count(VirtMachine *s1)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+    return riscv_cpu_get_cycles(m->cpu_state);
+}

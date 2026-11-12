@@ -98,7 +98,7 @@ typedef uint128_t mem_uint_t;
 #unsupported MLEN
 #endif
 
-#define TLB_SIZE 256
+#define TLB_SIZE 1024
 
 #define CAUSE_MISALIGNED_FETCH    0x0
 #define CAUSE_FAULT_FETCH         0x1

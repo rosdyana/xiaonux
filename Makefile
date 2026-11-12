@@ -16,8 +16,9 @@ wheels:         ## build riscv64 wheels (builder VM) and publish the index to di
 emu:            ## native temu + splitimg (debugging)
 	$(MAKE) -C emu
 
-wasm:           ## TinyEMU -> build/wasm/xemu.{mjs,wasm}
+wasm:           ## TinyEMU -> build/wasm/xemu.{mjs,wasm} (+ copy into dist/vm if staged)
 	$(EMENV) $(MAKE) -C emu -f Makefile.wasm
+	@if [ -d dist/vm ]; then cp build/wasm/xemu.mjs build/wasm/xemu.wasm dist/vm/; fi
 
 firmware:       ## OpenSBI fw_jump -> build/fw_jump.bin (builder VM)
 	$(ORB) -m $(VM) image/build-opensbi.sh
