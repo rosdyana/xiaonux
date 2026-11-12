@@ -35,6 +35,9 @@ page.on('console', (m) => {
   process.stderr.write('console: ' + m.text() + '\n');
 });
 page.on('pageerror', (e) => process.stderr.write(`pageerror: ${e}\n`));
+page.on('crash', () => process.stderr.write('PAGE CRASHED\n'));
+page.on('framenavigated', (f) => f === page.mainFrame() && process.stderr.write(`navigated: ${f.url()}\n`));
+page.on('worker', (w) => w.on('console', (m) => process.stderr.write(`worker: ${m.text()}\n`)));
 
 // Read the terminal buffer text (last N lines).
 const screen = (n = 60) => page.evaluate((n) => window.xiaonuxScreen(n), n);

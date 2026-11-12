@@ -12,6 +12,8 @@ const TYPES: Record<string, string> = {
   '.js': 'text/javascript',
   '.txt': 'text/plain',
   '.cfg': 'text/plain',
+  '.html': 'text/html; charset=utf-8',
+  '.json': 'application/json',
 };
 
 function serveVm(): Plugin {

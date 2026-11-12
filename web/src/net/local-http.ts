@@ -37,6 +37,8 @@ export function localHttpStream(fetchPath: LocalFetch): ExitStream {
           const r = await fetchPath(target.split('?')[0]);
           status = r.status; reason = r.statusText || (r.ok ? 'OK' : 'Error');
           type = r.headers.get('content-type') ?? type;
+          // pip insists on an HTML type for index pages, whatever the host says
+          if (/\/$|\.html$/.test(target.split('?')[0])) type = 'text/html; charset=utf-8';
           if (method === 'GET') body = new Uint8Array(await r.arrayBuffer());
         }
         const hdr = `HTTP/1.1 ${status} ${reason}\r\nContent-Type: ${type}\r\nContent-Length: ${body.length}\r\n` +

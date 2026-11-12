@@ -180,8 +180,8 @@ async function afterRestore() {
   const seed = crypto.getRandomValues(new Uint8Array(64));
   const hex = [...seed].map((b) => b.toString(16).padStart(2, '0')).join('');
   const [okSeed, okTime] = await Promise.all([
-    agentCommand(`seed ${hex}`),
-    agentCommand(`time ${Date.now()}`),
+    agentCommand(`seed ${hex}`, 15000),
+    agentCommand(`time ${Date.now()}`, 15000),
   ]);
   if (!okSeed || !okTime) post({ type: 'log', message: `agent: seed ${okSeed} time ${okTime}` });
   const [cols, rows] = vm!.consoleSize;
@@ -296,7 +296,8 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     },
   );
   // Our riscv64 wheel index, served inside the worker (works with the network off).
-  net.localHosts.set('wheels.xiaonux', (path) => fetch(base + 'pypi' + path));
+  // Static hosting: a directory URL means its index.html.
+  net.localHosts.set('wheels.xiaonux', (path) => fetch(base + 'pypi' + (path.endsWith('/') ? path + 'index.html' : path)));
   let cfg = desc.cfg;
   let userSnap: Uint8Array | null = null;
   if (desc.disk) {

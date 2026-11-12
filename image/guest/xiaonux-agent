@@ -42,7 +42,20 @@ def handle(line: str) -> str:
     return f"ok {cmd}\n"
 
 
+def lock_memory():
+    """Stay resident: the snapshot build drops page caches, and an agent that
+    has to fault its own code back in from disk answers too late after a
+    restore (the prompt would appear before the clock and entropy are fixed)."""
+    import ctypes
+    MCL_CURRENT, MCL_FUTURE = 1, 2
+    try:
+        ctypes.CDLL(None, use_errno=True).mlockall(MCL_CURRENT | MCL_FUTURE)
+    except Exception:
+        pass
+
+
 def main():
+    lock_memory()
     fd = os.open("/dev/hvc1", os.O_RDWR | os.O_NOCTTY)
     tty.setraw(fd)
     buf = b""
