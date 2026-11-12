@@ -1,0 +1,13 @@
+[Unit]
+Description=xiaonux guest network (fixed addressing)
+After=systemd-udevd.service
+Before=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/xiaonux-net
+
+[Install]
+WantedBy=multi-user.target

@@ -93,7 +93,10 @@
 
 #define MAX_QUEUE 8
 #define MAX_CONFIG_SPACE_SIZE 256
-#define MAX_QUEUE_NUM 16
+/* xiaonux: was 16. Linux virtio-net stops TX while fewer than
+   MAX_SKB_FRAGS + 2 (19) descriptors are free, so a 16-entry ring stalls
+   after the first packet. */
+#define MAX_QUEUE_NUM 256
 
 typedef struct {
     uint32_t ready; /* 0 or 1 */

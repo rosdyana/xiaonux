@@ -1,0 +1,19 @@
+#!/bin/sh
+# xiaonux guest network: fixed addressing on the virtual link.
+# guest 10.0.2.15/24, gateway 10.0.2.2, DNS 10.0.2.3 (same as slirp's
+# defaults, so native snapshot builds and the browser stack agree).
+set -e
+for i in $(seq 50); do
+  # first interface backed by a device (skips lo, dummy0, sit0, ...)
+  dev=""
+  for d in /sys/class/net/*; do
+    [ -e "$d/device" ] && { dev=$(basename "$d"); break; }
+  done
+  [ -n "$dev" ] && break
+  sleep 0.1
+done
+[ -n "$dev" ] || { echo "xiaonux-net: no network interface"; exit 0; }
+ip link set lo up
+ip link set "$dev" up
+ip addr replace 10.0.2.15/24 dev "$dev"
+ip route replace default via 10.0.2.2 dev "$dev"

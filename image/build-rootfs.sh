@@ -35,6 +35,10 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-agent /usr/local/sbin" \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-agent.service /etc/systemd/system" \
   --customize-hook='chroot "$1" systemctl enable xiaonux-agent.service' \
+  --customize-hook="copy-in $REPO/image/guest/xiaonux-net /usr/local/sbin" \
+  --customize-hook="copy-in $REPO/image/guest/xiaonux-net.service /etc/systemd/system" \
+  --customize-hook='chroot "$1" systemctl enable xiaonux-net.service' \
+  --customize-hook='rm -f "$1/etc/resolv.conf"; echo "nameserver 10.0.2.3" > "$1/etc/resolv.conf"' \
   --customize-hook='chroot "$1" systemctl mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer e2scrub_all.timer fstrim.timer 2>/dev/null || true' \
   --customize-hook='rm -rf "$1"/var/cache/apt/*.bin "$1"/var/lib/apt/lists/* "$1"/var/log/*.log' \
   "$DEBIAN_SUITE" "$ROOT" http://deb.debian.org/debian
