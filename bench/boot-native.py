@@ -17,13 +17,23 @@ ap.add_argument("--login", default=None, help="USER or USER:PASS")
 ap.add_argument("--timeout", type=float, default=300)
 ap.add_argument("--cmd", action="append", default=[])
 ap.add_argument("--quiet", action="store_true")
+ap.add_argument("--save", help="after the commands, SIGUSR1-save a snapshot to this path")
+ap.add_argument("--restore", help="restore this snapshot instead of booting")
+ap.add_argument("--rw", action="store_true", help="write guest disk changes to the image file")
 a = ap.parse_args()
 a.temu = os.path.abspath(a.temu)
 
+env = dict(os.environ)
+if a.save:
+    env["XIAONUX_SNAPSHOT_OUT"] = os.path.abspath(a.save)
+if a.restore:
+    env["XIAONUX_RESTORE"] = os.path.abspath(a.restore)
 pid, fd = pty.fork()
 if pid == 0:
+    os.environ.clear()
+    os.environ.update(env)
     os.chdir(os.path.dirname(os.path.abspath(a.cfg)))
-    os.execv(a.temu, [a.temu, os.path.basename(a.cfg)])
+    os.execv(a.temu, [a.temu] + (["-rw"] if a.rw else []) + [os.path.basename(a.cfg)])
 
 t0 = time.monotonic()
 buf = b""
@@ -63,7 +73,12 @@ def send(s):
 
 result = {"ok": False}
 try:
-    if a.login:
+    if a.restore:
+        # A restored guest sits at its prompt: poke it to print a fresh one.
+        if not expect(r"restored", 60):
+            raise SystemExit
+        send("\r")
+    elif a.login:
         user, _, pw = a.login.partition(":")
         if not expect(r"login: ?$", a.timeout):
             raise SystemExit
@@ -84,6 +99,13 @@ try:
             raise SystemExit
         cmd_times.append(round(time.monotonic() - t1, 2))
     result["cmd_s"] = cmd_times
+    if a.save:
+        t1 = time.monotonic()
+        os.kill(pid, signal.SIGUSR1)
+        if not expect(r"snapshot saved: .*\((\d+) bytes\)", 120):
+            raise SystemExit
+        result["save_s"] = round(time.monotonic() - t1, 2)
+        result["snapshot_bytes"] = os.path.getsize(a.save)
     result["ok"] = True
 except SystemExit:
     pass

@@ -1408,3 +1408,56 @@ RISCVCPUState *riscv_cpu_init(PhysMemoryMap *mem_map, int max_xlen)
 }
 #endif /* CONFIG_RISCV_MAX_XLEN == MAX_XLEN */
 
+
+#if MAX_XLEN == 64
+/* xiaonux: snapshot of the CPU state (see xsnap.h). TLBs and the
+   interpreter's code cache are host-pointer caches: flushed on load. */
+#include "xsnap.h"
+
+void riscv_cpu_snapshot(RISCVCPUState *s, XSnap *sn)
+{
+    int i;
+    xsnap_tag(sn, "CPU0");
+    XSNAP_U64(sn, s->pc);
+    for (i = 0; i < 32; i++)
+        XSNAP_U64(sn, s->reg[i]);
+#if FLEN > 0
+    for (i = 0; i < 32; i++)
+        XSNAP_U64(sn, s->fp_reg[i]);
+    XSNAP_U64(sn, s->fflags);
+    XSNAP_U64(sn, s->frm);
+#endif
+    XSNAP_U64(sn, s->cur_xlen);
+    XSNAP_U64(sn, s->priv);
+    XSNAP_U64(sn, s->fs);
+    XSNAP_U64(sn, s->mxl);
+    XSNAP_U64(sn, s->insn_counter);
+    XSNAP_U64(sn, s->power_down_flag);
+    XSNAP_U64(sn, s->mstatus);
+    XSNAP_U64(sn, s->mtvec);
+    XSNAP_U64(sn, s->mscratch);
+    XSNAP_U64(sn, s->mepc);
+    XSNAP_U64(sn, s->mcause);
+    XSNAP_U64(sn, s->mtval);
+    XSNAP_U64(sn, s->mhartid);
+    XSNAP_U64(sn, s->misa);
+    XSNAP_U64(sn, s->mie);
+    XSNAP_U64(sn, s->mip);
+    XSNAP_U64(sn, s->medeleg);
+    XSNAP_U64(sn, s->mideleg);
+    XSNAP_U64(sn, s->mcounteren);
+    XSNAP_U64(sn, s->stvec);
+    XSNAP_U64(sn, s->sscratch);
+    XSNAP_U64(sn, s->sepc);
+    XSNAP_U64(sn, s->scause);
+    XSNAP_U64(sn, s->stval);
+    XSNAP_U64(sn, s->satp);
+    XSNAP_U64(sn, s->scounteren);
+    XSNAP_U64(sn, s->load_res);
+    if (!sn->saving) {
+        s->pending_exception = -1;
+        s->n_cycles = 0;
+        tlb_flush_all(s);
+    }
+}
+#endif

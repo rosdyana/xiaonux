@@ -1114,3 +1114,95 @@ const VirtMachineClass riscv_machine_class = {
     riscv_vm_send_mouse_event,
     riscv_vm_send_key_event,
 };
+
+/* xiaonux: whole-machine snapshots (see xsnap.h).
+   Layout: magic, version, ram size, then sections MACH, CPU0, VIO0, RAM0.
+   RAM is stored as a bitmap of non-zero 4 KB pages followed by those
+   pages. The low ROM (boot code + device tree) isn't saved: Linux never
+   reads it again after boot. */
+#include "xsnap.h"
+
+void riscv_cpu_snapshot(RISCVCPUState *s, XSnap *sn);
+int virtio_snapshot(XSnap *sn);
+
+#define XN_PAGE 4096
+
+static int riscv_machine_snapshot(RISCVMachine *m, XSnap *sn)
+{
+    char magic[8];
+    uint64_t version = XSNAP_VERSION, ram_size = m->ram_size, now, n_pages, i;
+    uint8_t *ram, *bitmap;
+
+    memcpy(magic, XSNAP_MAGIC, 8);
+    xsnap_bytes(sn, magic, 8);
+    XSNAP_U64(sn, version);
+    XSNAP_U64(sn, ram_size);
+    if (!sn->saving && (memcmp(magic, XSNAP_MAGIC, 8) != 0 ||
+                        version != XSNAP_VERSION || ram_size != m->ram_size)) {
+        sn->error = 1;
+        return -1;
+    }
+
+    xsnap_tag(sn, "MACH");
+    /* Guest time: on load, rebase the host clock so guest time continues
+       from the saved value (the guest agent fixes the wall clock). */
+    now = rtc_get_time(m);
+    XSNAP_U64(sn, now);
+    if (!sn->saving) {
+        if (m->rtc_real_time)
+            m->rtc_start_time = rtc_get_real_time(m) - now;
+    }
+    XSNAP_U64(sn, m->timecmp);
+    XSNAP_U64(sn, m->plic_pending_irq);
+    XSNAP_U64(sn, m->plic_served_irq);
+    XSNAP_U64(sn, m->htif_tohost);
+    XSNAP_U64(sn, m->htif_fromhost);
+
+    riscv_cpu_snapshot(m->cpu_state, sn);
+    if (virtio_snapshot(sn) < 0)
+        return -1;
+
+    xsnap_tag(sn, "RAM0");
+    ram = get_ram_ptr(m, RAM_BASE_ADDR, TRUE);
+    n_pages = m->ram_size / XN_PAGE;
+    bitmap = mallocz((n_pages + 7) / 8);
+    if (sn->saving) {
+        static const uint8_t zero[XN_PAGE];
+        for (i = 0; i < n_pages; i++)
+            if (memcmp(ram + i * XN_PAGE, zero, XN_PAGE) != 0)
+                bitmap[i >> 3] |= 1 << (i & 7);
+    }
+    xsnap_bytes(sn, bitmap, (n_pages + 7) / 8);
+    for (i = 0; i < n_pages && !sn->error; i++) {
+        if ((bitmap[i >> 3] >> (i & 7)) & 1)
+            xsnap_bytes(sn, ram + i * XN_PAGE, XN_PAGE);
+        else if (!sn->saving)
+            memset(ram + i * XN_PAGE, 0, XN_PAGE);
+    }
+    free(bitmap);
+    if (!sn->saving && !sn->error) {
+        /* code/data TLBs may map RAM we just rewrote */
+        riscv_cpu_flush_tlb_write_range_ram(m->cpu_state, ram, m->ram_size);
+    }
+    return sn->error ? -1 : 0;
+}
+
+/* Returns 0 and a malloc'd buffer, or -1 if the machine is busy (retry). */
+int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen)
+{
+    XSnap sn = { .saving = 1 };
+    if (riscv_machine_snapshot((RISCVMachine *)s1, &sn) < 0) {
+        free(sn.buf);
+        return -1;
+    }
+    *pbuf = sn.buf;
+    *plen = sn.len;
+    return 0;
+}
+
+/* Returns 0 on success, -1 if the snapshot doesn't match this machine. */
+int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len)
+{
+    XSnap sn = { .saving = 0, .buf = (uint8_t *)buf, .len = len };
+    return riscv_machine_snapshot((RISCVMachine *)s1, &sn);
+}

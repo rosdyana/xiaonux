@@ -217,11 +217,18 @@ static void virtio_pci_bar_set(void *opaque, int bar_num,
     phys_mem_set_addr(s->mem_range, addr, enabled);
 }
 
+/* xiaonux: registry of devices in creation order, for snapshots */
+#define XN_MAX_VIRTIO 16
+static VIRTIODevice *xn_virtio_devs[XN_MAX_VIRTIO];
+static int xn_virtio_count;
+
 static void virtio_init(VIRTIODevice *s, VIRTIOBusDef *bus,
                         uint32_t device_id, int config_space_size,
                         VIRTIODeviceRecvFunc *device_recv)
 {
     memset(s, 0, sizeof(*s));
+    if (xn_virtio_count < XN_MAX_VIRTIO)
+        xn_virtio_devs[xn_virtio_count++] = s;
 
     if (bus->pci_bus) {
         uint16_t pci_device_id, class_id;
@@ -2648,3 +2655,55 @@ VIRTIODevice *virtio_9p_init(VIRTIOBusDef *bus, FSDevice *fs,
     return (VIRTIODevice *)s;
 }
 
+
+/* xiaonux: snapshot of all virtio devices (see xsnap.h). Queue contents
+   live in guest RAM; here we keep the transport and device registers.
+   Returns -1 when saving is not possible right now (a block request is in
+   flight); the caller retries later. */
+#include "xsnap.h"
+
+int virtio_snapshot(XSnap *sn)
+{
+    int i, q;
+    uint64_t count = xn_virtio_count;
+
+    if (sn->saving) {
+        for (i = 0; i < xn_virtio_count; i++) {
+            VIRTIODevice *d = xn_virtio_devs[i];
+            if (d->device_id == 2 && ((VIRTIOBlockDevice *)d)->req_in_progress)
+                return -1;
+        }
+    }
+    xsnap_tag(sn, "VIO0");
+    XSNAP_U64(sn, count);
+    if (count != (uint64_t)xn_virtio_count) {
+        sn->error = 1;
+        return -1;
+    }
+    for (i = 0; i < xn_virtio_count; i++) {
+        VIRTIODevice *d = xn_virtio_devs[i];
+        uint64_t id = d->device_id, cfg_size = d->config_space_size;
+        XSNAP_U64(sn, id);
+        XSNAP_U64(sn, cfg_size);
+        if (id != d->device_id || cfg_size != d->config_space_size) {
+            sn->error = 1;
+            return -1;
+        }
+        XSNAP_U64(sn, d->int_status);
+        XSNAP_U64(sn, d->status);
+        XSNAP_U64(sn, d->device_features_sel);
+        XSNAP_U64(sn, d->queue_sel);
+        for (q = 0; q < MAX_QUEUE; q++) {
+            QueueState *qs = &d->queue[q];
+            XSNAP_U64(sn, qs->ready);
+            XSNAP_U64(sn, qs->num);
+            XSNAP_U64(sn, qs->last_avail_idx);
+            XSNAP_U64(sn, qs->desc_addr);
+            XSNAP_U64(sn, qs->avail_addr);
+            XSNAP_U64(sn, qs->used_addr);
+            XSNAP_U64(sn, qs->manual_recv);
+        }
+        xsnap_bytes(sn, d->config_space, d->config_space_size);
+    }
+    return sn->error ? -1 : 0;
+}

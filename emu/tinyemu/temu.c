@@ -603,6 +603,75 @@ void virt_machine_run(VirtMachine *m)
 }
 
 /*******************************************************/
+/* xiaonux: snapshots for the native build.
+   SIGUSR1 -> save to $XIAONUX_SNAPSHOT_OUT (once the disk is idle), exit.
+   $XIAONUX_RESTORE -> load that snapshot right after machine init. */
+
+int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen);
+int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len);
+
+static volatile sig_atomic_t xn_save_requested;
+
+static void xn_on_sigusr1(int sig)
+{
+    xn_save_requested = 1;
+}
+
+static void xn_snapshot_try_save(VirtMachine *s)
+{
+    const char *path = getenv("XIAONUX_SNAPSHOT_OUT");
+    uint8_t *buf;
+    size_t len;
+    FILE *f;
+
+    if (!path) {
+        fprintf(stderr, "\r\n[xiaonux] SIGUSR1 but XIAONUX_SNAPSHOT_OUT not set\r\n");
+        xn_save_requested = 0;
+        return;
+    }
+    if (riscv_machine_snapshot_save(s, &buf, &len) < 0)
+        return; /* busy: retry after the next slice */
+    f = fopen(path, "wb");
+    if (!f || fwrite(buf, 1, len, f) != len) {
+        perror(path);
+        exit(1);
+    }
+    fclose(f);
+    free(buf);
+    fprintf(stderr, "\r\n[xiaonux] snapshot saved: %s (%zu bytes)\r\n", path, len);
+    exit(0);
+}
+
+static void xn_snapshot_restore_from_env(VirtMachine *s)
+{
+    const char *path = getenv("XIAONUX_RESTORE");
+    uint8_t *buf;
+    long len;
+    FILE *f;
+
+    if (!path)
+        return;
+    f = fopen(path, "rb");
+    if (!f) {
+        perror(path);
+        exit(1);
+    }
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    buf = malloc(len);
+    if (fread(buf, 1, len, f) != (size_t)len) {
+        perror(path);
+        exit(1);
+    }
+    fclose(f);
+    if (riscv_machine_snapshot_load(s, buf, len) < 0) {
+        fprintf(stderr, "[xiaonux] snapshot %s does not match this machine\n", path);
+        exit(1);
+    }
+    free(buf);
+    fprintf(stderr, "[xiaonux] restored %s (%ld bytes)\r\n", path, len);
+}
 
 static struct option options[] = {
     { "help", no_argument, NULL, 'h' },
@@ -830,8 +899,14 @@ int main(int argc, char **argv)
         s->net->device_set_carrier(s->net, TRUE);
     }
     
+    xn_snapshot_restore_from_env(s);
+#ifndef _WIN32
+    signal(SIGUSR1, xn_on_sigusr1);
+#endif
     for(;;) {
         virt_machine_run(s);
+        if (xn_save_requested)
+            xn_snapshot_try_save(s);
     }
     virt_machine_end(s);
     return 0;
