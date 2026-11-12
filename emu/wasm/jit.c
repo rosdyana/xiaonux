@@ -27,7 +27,9 @@
 
 #define HOT_THRESHOLD   1000
 #define MAX_BLOCK_INSNS 64
-#define BATCH_MAX       32
+#define BATCH_MAX       64
+#define COUNTER_BITS    16       /* lossy hot counters, by hash of the key */
+#define FAST_BITS       12       /* direct-mapped cache in front of the table */
 #define TABLE_BITS      16
 #define TABLE_SIZE      (1 << TABLE_BITS)
 #define MAX_BLOCKS      (TABLE_SIZE / 2)   /* full reset beyond this */
@@ -58,6 +60,10 @@ static RISCVCPUState *cpu;
 
 static uint32_t queue[BATCH_MAX];
 static int queue_len;
+static uint16_t counters[1 << COUNTER_BITS];
+static struct { uint32_t key; int32_t fn; int32_t ninsn; } fast[1 << FAST_BITS];
+
+static inline uint32_t fast_idx(uint32_t key) { return (key >> 1) & ((1 << FAST_BITS) - 1); }
 
 /* stats */
 static uint64_t st_translated, st_modules, st_invalidated, st_resets, st_untranslatable;
@@ -136,6 +142,8 @@ void xn_jit_reset(void)
         page_head[i] = -1;
     if (code_page)
         memset(code_page, 0, n);
+    memset(counters, 0, sizeof(counters));
+    memset(fast, 0, sizeof(fast));
     js_jit_reset_slots();
     st_resets++;
 }
@@ -151,6 +159,8 @@ void xn_jit_invalidate_host_page(uintptr_t host)
         Block *b = &blocks[e];
         int next = b->next_in_page;
         b->next_in_page = -1;
+        if (fast[fast_idx(b->key)].key == b->key)
+            fast[fast_idx(b->key)].key = 0;
         if (b->state == B_READY || b->state == B_QUEUED) {
             b->state = B_COUNTING;
             b->count = 0;
@@ -173,22 +183,59 @@ int xn_jit_page_has_code(uintptr_t host)
 /* Called by the interpreter at every block fetch. */
 xn_block_fn xn_jit_lookup(uint8_t *ptr, int *ninsn)
 {
-    uint32_t key = (uint32_t)(uintptr_t)ptr;
+    uint32_t key = (uint32_t)(uintptr_t)ptr, fi = fast_idx(key);
     Block *b;
+    if (fast[fi].key == key) {
+        *ninsn = fast[fi].ninsn;
+        return (xn_block_fn)(uintptr_t)fast[fi].fn;
+    }
     if (!jit_enabled || ram_page_of(key) < 0)
         return NULL;
-    b = find(key, 1);
-    if (!b)
-        return NULL;
-    if (b->state == B_READY) {
+    b = find(key, 0);
+    if (b) {
+        if (b->state != B_READY)
+            return NULL;
+        fast[fi].key = key;
+        fast[fi].fn = b->fn;
+        fast[fi].ninsn = b->ninsn;
         *ninsn = b->ninsn;
         return (xn_block_fn)(uintptr_t)b->fn;
     }
-    if (b->state == B_COUNTING && ++b->count >= HOT_THRESHOLD && queue_len < BATCH_MAX) {
-        b->state = B_QUEUED;
-        queue[queue_len++] = key;
+    /* not translated: count (lossy), queue when hot */
+    {
+        uint16_t *c = &counters[hash_key(key) & ((1 << COUNTER_BITS) - 1)];
+        if (++*c >= HOT_THRESHOLD && queue_len < BATCH_MAX) {
+            *c = 0;
+            b = find(key, 1);
+            if (b && b->state == B_COUNTING) {
+                b->state = B_QUEUED;
+                queue[queue_len++] = key;
+            }
+        }
     }
     return NULL;
+}
+
+/* Run translated blocks back to back while the next one is translated, the
+   budget covers it and no interrupt is pending (the interpreter checks
+   those between blocks). Returns when the interpreter must take over. */
+void xn_jit_run(RISCVCPUState *s, xn_block_fn f)
+{
+    for (;;) {
+        target_ulong pc;
+        uint32_t idx;
+        int n;
+        f(s);
+        if (s->n_cycles <= 0 || (s->mip & s->mie) || s->power_down_flag)
+            return;
+        pc = s->pc;
+        idx = (pc >> PG_SHIFT) & (TLB_SIZE - 1);
+        if (s->tlb_code[idx].vaddr != (pc & ~(target_ulong)PG_MASK))
+            return; /* code TLB miss: let the interpreter refill it */
+        f = xn_jit_lookup((uint8_t *)(s->tlb_code[idx].mem_addend + (uintptr_t)pc), &n);
+        if (!f || s->n_cycles < n)
+            return;
+    }
 }
 
 EMSCRIPTEN_KEEPALIVE void xn_jit_set_enabled(int on)

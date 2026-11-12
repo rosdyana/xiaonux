@@ -373,9 +373,9 @@ EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
             break;
         virt_machine_interp(m, chunk_cycles);
         done += chunk_cycles;
-#ifdef XN_JIT
-        xn_jit_flush(); /* compile blocks that became hot */
-#endif
     }
+#ifdef XN_JIT
+    xn_jit_flush(); /* compile the blocks that became hot during this slice */
+#endif
     return delay;
 }

@@ -276,7 +276,7 @@ static void no_inline glue(riscv_cpu_interp_x, XLEN)(RISCVCPUState *s,
                     if (unlikely(xn_check_mode))
                         xn_check_block(s, xn_f, ptr, xn_n);
                     else
-                        xn_f(s);
+                        xn_jit_run(s, xn_f); /* chains through translated blocks */
                     code_ptr = NULL;
                     code_end = NULL;
                     code_to_pc_addend = s->pc;

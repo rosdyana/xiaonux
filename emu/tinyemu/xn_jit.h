@@ -11,6 +11,7 @@ void xn_jit_init(struct RISCVCPUState *s, uint8_t *ram, uint64_t ram_size);
 void xn_jit_reset(void);
 void xn_jit_flush(void);
 xn_block_fn xn_jit_lookup(uint8_t *code, int *ninsn);
+void xn_jit_run(struct RISCVCPUState *s, xn_block_fn f);
 void xn_jit_invalidate_host_page(uintptr_t host);
 int xn_jit_page_has_code(uintptr_t host);
 #endif
