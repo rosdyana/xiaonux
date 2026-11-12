@@ -77,7 +77,7 @@ function boot() {
         bytesFetched += m.bytes;
         break;
       case 'stats':
-        statsEl.textContent = `${m.mips} MIPS · heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
+        statsEl.textContent = `heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
         (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes };
         break;
       case 'error':

@@ -59,16 +59,13 @@ try {
   result.marks = await marks();
   result.prompt_wall_s = (Date.now() - t0) / 1000;
   result.cmds = [];
+  // A prompt line: ends with "# " or "$ " (possibly after the typed command).
+  const prompts = async () => (await screen(100000)).split('\n').filter((l) => /[#$] /.test(l + ' ') && /^\S*@?\S*[:~ \/\w]*[#$]/.test(l)).length;
   for (const c of opt.cmds) {
-    const before = (await screen(400)).length;
+    const n0 = await prompts();
     const t1 = Date.now();
     await typeLine(c);
-    // Wait until a new prompt appears after the command's output.
-    await waitFor(async () => {
-      const s = (await screen(400));
-      return s.length > before + c.length && /[#$] ?$/.test(s.trimEnd() + ' ') && s.trimEnd().split('\n').length > 1;
-    }, opt.timeout, `command: ${c}`);
-    await new Promise((r) => setTimeout(r, 300));
+    await waitFor(async () => (await prompts()) > n0 && /[#$] ?$/.test((await screen(1)).trimEnd() + ' '), opt.timeout, `command: ${c}`);
     result.cmds.push({ cmd: c, s: (Date.now() - t1) / 1000 });
   }
   result.stats = await page.evaluate(() => window.xiaonux);

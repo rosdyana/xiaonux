@@ -1,0 +1,40 @@
+{
+  "browser": "chrome",
+  "ok": true,
+  "marks": {
+    "vm": 138,
+    "login": 28521,
+    "prompt": 33140
+  },
+  "prompt_wall_s": 33.377,
+  "cmds": [
+    {
+      "cmd": "uname -a",
+      "s": 0.213
+    },
+    {
+      "cmd": "python3 -c \"print(2+2)\"",
+      "s": 0.816
+    },
+    {
+      "cmd": "df -h /",
+      "s": 0.209
+    },
+    {
+      "cmd": "systemd-analyze",
+      "s": 0.206
+    }
+  ],
+  "stats": {
+    "marks": {
+      "vm": 138,
+      "login": 28521,
+      "prompt": 33140
+    },
+    "bytesFetched": 83159145,
+    "mips": 3506,
+    "heapMb": 647,
+    "outBytes": 30184
+  },
+  "screen": "[  OK  ] Finished ldconfig.service - Rebuild Dynamic Linker Cache.\n[  OK  ] Finished systemd-udev-trigger.service - Coldplug All udev Devices.\n         Starting systemd-update-done.service - Update is Completed...\n[  OK  ] Finished systemd-update-done.service - Update is Completed.\n[  OK  ] Reached target sysinit.target - System Initialization.\n[  OK  ] Started systemd-tmpfiles-clean.timer - Daily Cleanup of Temporary Directories.\n[  OK  ] Reached target timers.target - Timer Units.\n[  OK  ] Listening on systemd-hostnamed.socket - Hostname Service Socket.\n[  OK  ] Reached target sockets.target - Socket Units.\n[  OK  ] Reached target basic.target - Basic System.\n         Starting systemd-user-sessions.service - Permit User Sessions...\n[  OK  ] Finished systemd-user-sessions.service - Permit User Sessions.\n[  OK  ] Started serial-getty@hvc0.service - Serial Getty on hvc0.\n[  OK  ] Reached target getty.target - Login Prompts.\n[  OK  ] Reached target multi-user.target - Multi-User System.\n[  OK  ] Reached target graphical.target - Graphical Interface.\n\nDebian GNU/Linux 13 xiaonux hvc0\n\nxiaonux login: root\nPassword: \nLinux xiaonux 6.12.117 #3 SMP Thu Nov 12 16:50:26 CST 2026 riscv64\n\nThe programs included with the Debian GNU/Linux system are free software;\nthe exact distribution terms for each program are described in the\nindividual files in /usr/share/doc/*/copyright.\n\nDebian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent\npermitted by applicable law.\nroot@xiaonux:~# uname -a\nLinux xiaonux 6.12.117 #3 SMP Thu Nov 12 16:50:26 CST 2026 riscv64 GNU/Linux\nroot@xiaonux:~# python3 -c \"print(2+2)\"\n4\nroot@xiaonux:~# df -h /\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root       2.0G  182M  1.7G  10% /\nroot@xiaonux:~# systemd-analyze\nStartup finished in 1.504s (kernel) + 25.586s (userspace) = 27.090s \ngraphical.target reached after 25.582s in userspace.\nroot@xiaonux:~# "
+}

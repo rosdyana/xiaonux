@@ -74,6 +74,7 @@ function tick() {
 
   const now = performance.now();
   if (now - lastStats > 1000) {
+    // Upper bound only: counts the cycle budget of slices that didn't idle.
     const mips = lastStats ? cycles / ((now - lastStats) * 1000) : 0;
     post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal });
     cycles = 0;
