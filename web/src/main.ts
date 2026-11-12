@@ -41,8 +41,9 @@ netSel.value = netPrefs.mode;
 
 // ----- relay (Cloudflare Worker): a Turnstile check buys a 1 h session -----
 const RELAY_URL = (params.get('relay') ?? import.meta.env.VITE_RELAY_URL ?? '').replace(/\/$/, '');
-const TURNSTILE_SITEKEY: string = import.meta.env.VITE_TURNSTILE_SITEKEY ?? '';
-let relaySession: { session: string; expires: number; allowed?: string[]; ports?: number[] } | null = null;
+// ?turnstile=0 skips the challenge (only a local DEV_NO_TURNSTILE relay accepts that)
+const TURNSTILE_SITEKEY: string = params.get('turnstile') === '0' ? '' : (import.meta.env.VITE_TURNSTILE_SITEKEY ?? '');
+let relaySession: { session: string; expires: number; allowed?: string[]; ports?: number[]; rotateBytes?: number } | null = null;
 
 function turnstileToken(): Promise<string> {
   if (!TURNSTILE_SITEKEY) return Promise.resolve(''); // local dev relay (DEV_NO_TURNSTILE)
@@ -94,7 +95,7 @@ function netConfig(): NetConfig {
   if (netPrefs.mode === 'relay' && RELAY_URL && relaySession) {
     const t = encodeURIComponent(relaySession.session);
     return { mode: 'relay', wsUrl: `${RELAY_URL.replace(/^http/, 'ws')}/wisp?session=${t}`, pingUrl: `${RELAY_URL}/ping?session=${t}`,
-      allowed: relaySession.allowed, ports: relaySession.ports };
+      allowed: relaySession.allowed, ports: relaySession.ports, rotateBytes: relaySession.rotateBytes };
   }
   if (netPrefs.mode === 'helper' && netPrefs.helperToken) {
     const base = `127.0.0.1:${netPrefs.helperPort ?? 8787}`;
@@ -202,6 +203,12 @@ async function boot(forceCold = false) {
         boot(true);
         break;
       case 'net':
+        if (m.status === 'rotated') break; // planned switch to a fresh relay socket
+        if (m.status === 'disconnected' && m.mode === 'relay') {
+          // the free relay ends busy sessions; the next connection reconnects
+          showNet('relay session ended; reconnecting on next use. For big downloads, run xiaonux-net', true);
+          break;
+        }
         showNet(m.status === 'connected' ? `connected (${m.mode === 'helper' ? 'this computer' : 'relay'})`
           : m.status === 'connecting' ? 'connecting…' : `disconnected${m.detail ? ` (${m.detail})` : ''}`);
         break;

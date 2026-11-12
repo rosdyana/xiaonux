@@ -23,6 +23,10 @@ const BUFFER = 64;
 const CLOSE_VOLUNTARY = 0x02, CLOSE_NETWORK = 0x03, CLOSE_INVALID = 0x41, CLOSE_UNREACHABLE = 0x42,
   CLOSE_BLOCKED = 0x48, CLOSE_THROTTLED = 0x49;
 const PORTS = new Set([80, 443]);
+const BATCH_BYTES = 32 * 1024;
+const BATCH_MS = 2;
+/** clients move new streams to a fresh WebSocket after this many bytes */
+const ROTATE_BYTES = 1 << 20;
 const SESSION_SECONDS = 3600;
 const MAX_STREAMS = 6;            // free plan: 6 simultaneous outbound connections
 const MAX_BYTES = 512 * 2 ** 20;  // per session, both directions
@@ -130,21 +134,37 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
     s.socket = socket;
     s.writer = socket.writable.getWriter();
     for (const d of s.pending.splice(0)) await write(id, s, d);
-    // remote -> browser
+    // remote -> browser, batched: every WebSocket message costs CPU, and on
+    // the free plan one session has a few ms of it in total.
     const reader = socket.readable.getReader();
     let reason = CLOSE_VOLUNTARY;
+    let acc: Uint8Array[] = [];
+    let accLen = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flushOut = () => {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!accLen) return;
+      const out = acc.length === 1 ? acc[0] : new Uint8Array(accLen);
+      if (acc.length > 1) { let o = 0; for (const a of acc) { out.set(a, o); o += a.length; } }
+      acc = []; accLen = 0;
+      send(DATA, id, out);
+    };
     try {
       for (;;) {
         const { value, done } = await reader.read();
         if (done || s.closed) break;
         stats.down += value.length;
         stats.hosts.set(host, (stats.hosts.get(host) ?? 0) + value.length);
-        send(DATA, id, value);
+        acc.push(value);
+        accLen += value.length;
+        if (accLen >= BATCH_BYTES) flushOut();
+        else if (!timer) timer = setTimeout(flushOut, BATCH_MS);
         if (overLimit()) { reason = CLOSE_THROTTLED; break; }
       }
     } catch {
       reason = CLOSE_NETWORK;
     }
+    flushOut();
     closeStream(id, reason, !s.closed);
   }
 
@@ -214,7 +234,7 @@ export default {
       const { turnstile } = (await req.json().catch(() => ({}))) as { turnstile?: string };
       if (!(await verifyTurnstile(turnstile ?? '', req.headers.get('CF-Connecting-IP'), env))) return json({ error: 'challenge failed' }, 403, cors);
       const allowed = env.ALLOWED_HOSTS.split(',').map((h) => h.trim()).filter(Boolean);
-      return json({ ...(await newSession(env)), allowed, ports: [...PORTS] }, 200, cors);
+      return json({ ...(await newSession(env)), allowed, ports: [...PORTS], rotateBytes: ROTATE_BYTES }, 200, cors);
     }
     if (!(await checkSession(url.searchParams.get('session'), env))) return json({ error: 'no session' }, 401, cors);
 

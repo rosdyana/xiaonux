@@ -63,7 +63,7 @@ function pumpRx() {
 function makeExit(cfg: NetConfig | undefined): Exit {
   if (!cfg || cfg.mode === 'off') return noExit;
   return new WispExit(cfg.mode, cfg.wsUrl, cfg.pingUrl, (status, detail) =>
-    post({ type: 'net', status, mode: cfg.mode, detail }), cfg.allowed, cfg.ports);
+    post({ type: 'net', status, mode: cfg.mode, detail }), cfg.allowed, cfg.ports, cfg.rotateBytes ?? 0);
 }
 
 // MessageChannel gives a macrotask yield without setTimeout's 4 ms clamp.

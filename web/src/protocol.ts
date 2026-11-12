@@ -8,6 +8,8 @@ export interface NetConfig {
   /** relay only: host names it will connect to ("*.x" = subdomains) and ports */
   allowed?: string[];
   ports?: number[];
+  /** relay only: move new streams to a fresh WebSocket after this many bytes */
+  rotateBytes?: number;
 }
 
 // Messages between the page and the VM worker.
@@ -30,7 +32,7 @@ export type FromWorker =
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
-  | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected'; mode: string; detail?: string }
+  | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected' | 'rotated'; mode: string; detail?: string }
   | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }
   | { type: 'error'; message: string };

@@ -6,6 +6,11 @@
 //   CLOSE    0x04  reason u8
 // Flow control is client -> server only: each DATA packet uses one slot of
 // the stream's buffer; the server refills it with CONTINUE.
+//
+// Rotation (for the free-tier relay, where one WebSocket is one request with
+// a small CPU budget): once a WebSocket has carried `rotateBytes`, new streams
+// go to a fresh one and the old one closes when its last stream ends. If the
+// relay drops a socket anyway, its streams fail and the next stream reconnects.
 
 import type { Exit, ExitStream } from './exit';
 
@@ -20,130 +25,93 @@ const CLOSE_REASONS: Record<number, string> = {
 
 interface Stream extends ExitStream {
   id: number;
+  conn: Conn;
   buffer: number;
   pending: Uint8Array[];
   closed: boolean;
 }
 
-export type WispStatus = 'connecting' | 'connected' | 'disconnected';
+export type WispStatus = 'connecting' | 'connected' | 'disconnected' | 'rotated';
 
-export class WispExit implements Exit {
-  private ws: WebSocket | null = null;
-  private streams = new Map<number, Stream>();
-  private nextId = 1;
-  private initialBuffer = 0;
-  private ready: Promise<void> | null = null;
+/** One WebSocket and the streams opened on it. */
+class Conn {
+  ws: WebSocket;
+  streams = new Map<number, Stream>();
+  initialBuffer = 0;
+  ready: Promise<void>;
+  bytes = 0;
+  retired = false;
+  dead = false;
   private outbox: Uint8Array<ArrayBuffer>[] = [];
 
-  constructor(
-    readonly kind: 'helper' | 'relay',
-    private wsUrl: string,
-    private pingUrl: string,
-    private onStatus: (s: WispStatus, detail?: string) => void = () => {},
-    private allowed?: string[],
-    private ports?: number[],
-  ) {}
-
-  allows(host: string, port: number): boolean {
-    if (this.ports && !this.ports.includes(port)) return false;
-    if (!this.allowed) return true;
-    const h = host.toLowerCase();
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
-    return this.allowed.some((a) => (a.startsWith('*.') ? h.endsWith(a.slice(1)) || h === a.slice(2) : h === a.toLowerCase()));
-  }
-
-  private ensure(): Promise<void> {
-    if (this.ready) return this.ready;
-    this.onStatus('connecting');
+  constructor(url: string, private owner: WispExit) {
+    this.ws = new WebSocket(url);
+    this.ws.binaryType = 'arraybuffer';
+    let gotInitial = false;
     this.ready = new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(this.wsUrl);
-      ws.binaryType = 'arraybuffer';
-      this.ws = ws;
-      let gotInitial = false;
-      ws.onmessage = (e) => {
+      this.ws.onmessage = (e) => {
         const p = new Uint8Array(e.data as ArrayBuffer);
+        this.bytes += p.length;
         if (!gotInitial && p[0] === CONTINUE && readU32(p, 1) === 0) {
           gotInitial = true;
           this.initialBuffer = readU32(p, 5);
-          this.onStatus('connected');
           resolve();
-          for (const b of this.outbox) ws.send(b);
+          for (const b of this.outbox) this.ws.send(b);
           this.outbox = [];
+          this.owner.status('connected');
           return;
         }
         this.onPacket(p);
       };
-      ws.onclose = (e) => {
-        this.onStatus('disconnected', e.reason || `code ${e.code}`);
+      this.ws.onclose = (e) => {
+        this.dead = true;
         if (!gotInitial) reject(new Error(`exit closed (${e.code})`));
-        this.ws = null;
-        this.ready = null;
         for (const s of [...this.streams.values()]) this.finish(s, 'network connection lost');
+        this.owner.connClosed(this, e.reason || `code ${e.code}`);
       };
-      ws.onerror = () => {};
+      this.ws.onerror = () => {};
     });
     this.ready.catch(() => {});
-    return this.ready;
   }
 
-  private raw(type: number, id: number, payload: Uint8Array) {
+  raw(type: number, id: number, payload: Uint8Array) {
     const b = new Uint8Array(5 + payload.length);
     b[0] = type;
     new DataView(b.buffer).setUint32(1, id, true);
     b.set(payload, 5);
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.initialBuffer) this.ws.send(b);
+    this.bytes += b.length;
+    if (this.ws.readyState === WebSocket.OPEN && this.initialBuffer) this.ws.send(b);
     else this.outbox.push(b);
   }
 
-  connect(host: string, port: number): ExitStream {
-    const id = this.nextId++;
-    const s: Stream = {
-      id, buffer: 0, pending: [], closed: false,
-      onData: () => {}, onClose: () => {},
-      write: (d) => {
-        if (s.closed) return;
-        s.pending.push(d);
-        this.flush(s);
-      },
-      close: () => {
-        if (s.closed) return;
-        s.closed = true;
-        this.flush(s, true);
-      },
-    };
-    this.streams.set(id, s);
-    const hostBytes = new TextEncoder().encode(host);
-    const payload = new Uint8Array(3 + hostBytes.length);
-    payload[0] = 1; // TCP
-    new DataView(payload.buffer).setUint16(1, port, true);
-    payload.set(hostBytes, 3);
-    this.ensure().then(
-      () => {
-        s.buffer = this.initialBuffer;
-        this.flush(s);
-      },
-      (e) => this.finish(s, String(e.message ?? e)),
-    );
-    this.raw(CONNECT, id, payload);
-    return s;
-  }
-
-  /** Send pending DATA while the stream has buffer; CLOSE after the last byte. */
-  private flush(s: Stream, closing = false) {
+  /** Send pending DATA (coalesced) while the stream has buffer; CLOSE after the last byte. */
+  flush(s: Stream) {
     while (s.pending.length && s.buffer > 0) {
-      this.raw(DATA, s.id, s.pending.shift()!);
+      // merge small writes into one packet: fewer messages for the relay to handle
+      let n = 0, k = 0;
+      while (k < s.pending.length && n + s.pending[k].length <= 64 * 1024) n += s.pending[k++].length;
+      if (k === 0) k = 1;
+      const parts = s.pending.splice(0, k);
+      let data: Uint8Array;
+      if (parts.length === 1) data = parts[0];
+      else {
+        data = new Uint8Array(parts.reduce((a, p) => a + p.length, 0));
+        let o = 0;
+        for (const p of parts) { data.set(p, o); o += p.length; }
+      }
+      this.raw(DATA, s.id, data);
       s.buffer--;
     }
-    if ((s.closed || closing) && !s.pending.length && this.streams.has(s.id)) {
+    if (s.closed && !s.pending.length && this.streams.has(s.id)) {
       this.raw(CLOSE, s.id, new Uint8Array([0x02]));
       this.streams.delete(s.id);
+      this.maybeClose();
     }
   }
 
   private onPacket(p: Uint8Array) {
     if (p.length < 5) return;
-    const id = readU32(p, 1);
-    const s = this.streams.get(id);
+    const s = this.streams.get(readU32(p, 1));
     if (!s) return;
     switch (p[0]) {
       case DATA:
@@ -161,11 +129,102 @@ export class WispExit implements Exit {
     }
   }
 
-  private finish(s: Stream, reason: string | null) {
-    if (!this.streams.has(s.id) && s.closed) return;
+  finish(s: Stream, reason: string | null) {
+    if (!this.streams.has(s.id)) return;
     this.streams.delete(s.id);
     s.closed = true;
     s.onClose(reason);
+    this.maybeClose();
+  }
+
+  /** A retired connection goes away once its last stream is done. */
+  maybeClose() {
+    if (this.retired && this.streams.size === 0 && !this.dead) this.ws.close(1000, 'rotated');
+  }
+}
+
+export class WispExit implements Exit {
+  private current: Conn | null = null;
+  private nextId = 1;
+
+  constructor(
+    readonly kind: 'helper' | 'relay',
+    private wsUrl: string,
+    private pingUrl: string,
+    private onStatus: (s: WispStatus, detail?: string) => void = () => {},
+    private allowed?: string[],
+    private ports?: number[],
+    /** bytes per WebSocket before new streams use a fresh one (0 = never) */
+    private rotateBytes = 0,
+  ) {}
+
+  status(s: WispStatus, detail?: string) {
+    this.onStatus(s, detail);
+  }
+
+  connClosed(c: Conn, detail: string) {
+    if (c === this.current) {
+      this.current = null;
+      // A drop the client didn't ask for (e.g. the relay shed the request):
+      // the next stream reconnects.
+      this.onStatus('disconnected', detail);
+    }
+  }
+
+  allows(host: string, port: number): boolean {
+    if (this.ports && !this.ports.includes(port)) return false;
+    if (!this.allowed) return true;
+    const h = host.toLowerCase();
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
+    return this.allowed.some((a) => (a.startsWith('*.') ? h.endsWith(a.slice(1)) || h === a.slice(2) : h === a.toLowerCase()));
+  }
+
+  private conn(): Conn {
+    const c = this.current;
+    if (c && !c.dead && !(this.rotateBytes && c.bytes > this.rotateBytes)) return c;
+    if (c && !c.dead) {
+      c.retired = true;
+      c.maybeClose();
+      this.onStatus('rotated');
+    }
+    if (!c || c.dead) this.onStatus('connecting');
+    this.current = new Conn(this.wsUrl, this);
+    return this.current;
+  }
+
+  connect(host: string, port: number): ExitStream {
+    const conn = this.conn();
+    const id = this.nextId++;
+    const s: Stream = {
+      id, conn, buffer: 0, pending: [], closed: false,
+      onData: () => {}, onClose: () => {},
+      write: (d) => {
+        if (s.closed) return;
+        s.pending.push(d);
+        // coalesce writes made in the same turn into one packet
+        if (s.pending.length === 1) queueMicrotask(() => conn.flush(s));
+      },
+      close: () => {
+        if (s.closed) return;
+        s.closed = true;
+        queueMicrotask(() => conn.flush(s));
+      },
+    };
+    conn.streams.set(id, s);
+    const hostBytes = new TextEncoder().encode(host);
+    const payload = new Uint8Array(3 + hostBytes.length);
+    payload[0] = 1; // TCP
+    new DataView(payload.buffer).setUint16(1, port, true);
+    payload.set(hostBytes, 3);
+    conn.ready.then(
+      () => {
+        s.buffer = conn.initialBuffer;
+        conn.flush(s);
+      },
+      (e) => conn.finish(s, String(e.message ?? e)),
+    );
+    conn.raw(CONNECT, id, payload);
+    return s;
   }
 
   async ping(host: string): Promise<number | null> {
@@ -180,7 +239,7 @@ export class WispExit implements Exit {
   }
 
   close() {
-    this.ws?.close();
+    this.current?.ws.close();
   }
 }
 
