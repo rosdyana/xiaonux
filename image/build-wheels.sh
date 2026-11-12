@@ -27,6 +27,11 @@ rustc,cargo,ca-certificates,curl \
 fi
 
 cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
+# Some crates need a newer Rust than Debian's (orjson 3.13 wants 1.95; trixie has 1.85).
+if [ "${RUSTUP:-0}" = 1 ] && [ ! -x "$CHROOT/root/.cargo/bin/rustc" ]; then
+  echo "== rustup stable in the chroot"
+  chroot "$CHROOT" sh -c 'curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable'
+fi
 mkdir -p "$CHROOT/wheels" "$CHROOT/proc" "$CHROOT/dev"
 mountpoint -q "$CHROOT/proc" || mount -t proc proc "$CHROOT/proc"
 mountpoint -q "$CHROOT/dev" || mount --bind /dev "$CHROOT/dev"
@@ -40,7 +45,8 @@ for p in "${PKGS[@]}"; do
   echo "== $p ($(date +%T))"
   t0=$(date +%s)
   # --find-links: later builds (pandas) pick up our numpy instead of compiling it again
-  chroot "$CHROOT" env CARGO_NET_GIT_FETCH_WITH_CLI=true MAKEFLAGS=-j"$(nproc)" \
+  chroot "$CHROOT" env PATH="/root/.cargo/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    CARGO_NET_GIT_FETCH_WITH_CLI=true MAKEFLAGS=-j"$(nproc)" \
     python3 -m pip wheel --no-deps --no-binary=":none:" --find-links /wheels -w /wheels "$p" \
     > "$XBUILD/wheel-$p.log" 2>&1 || { echo "   FAILED (see $XBUILD/wheel-$p.log)"; tail -5 "$XBUILD/wheel-$p.log"; continue; }
   echo "   ok in $(( $(date +%s) - t0 ))s"
