@@ -8,6 +8,7 @@ declare const self: DedicatedWorkerGlobalScope;
 interface Xemu extends DiskModule {
   disk?: ChunkDisk;
   _vm_set_snapshot(ptr: number, len: number, rawLen: number): number;
+  _vm_set_snapshot_raw(ptr: number, len: number): void;
   _vm_snapshot_save(plen: number): number;
   _agent_send(ptr: number, len: number): number;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
@@ -163,6 +164,37 @@ async function afterRestore() {
   post({ type: 'restored', ms: Math.round(performance.now() - t0), agentOk: okSeed && okTime });
 }
 
+// ----- user snapshots -----
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const SAVE_AFTER_IDLE_MS = 5000;
+
+function scheduleSave() {
+  if (saveTimer !== null) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveNow('idle');
+  }, SAVE_AFTER_IDLE_MS);
+}
+
+// Runs between slices, so the guest is paused. A save is refused while a
+// disk request is in flight; retry shortly.
+function saveNow(reason: string, attempt = 0) {
+  if (!vm || !ready || !disk || !disk.canSaveSnapshots) return;
+  if (!disk.hasUserData || !disk.changedSinceSave) return;
+  const t = performance.now();
+  const lenPtr = vm._malloc(4);
+  const p = vm._vm_snapshot_save(lenPtr);
+  const len = new Uint32Array(vm.HEAPU8.buffer, lenPtr, 1)[0];
+  vm._free(lenPtr);
+  if (!p) {
+    if (attempt < 40) setTimeout(() => saveNow(reason, attempt + 1), 25);
+    return;
+  }
+  disk.saveUserSnapshot(vm.HEAPU8.subarray(p, p + len));
+  vm._free(p);
+  post({ type: 'saved', reason, ms: Math.round(performance.now() - t), bytes: len });
+}
+
 async function fetchCached(url: string): Promise<Uint8Array> {
   let cache: Cache | null = null;
   try {
@@ -213,19 +245,29 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
   });
   vm = mod;
   let cfg = desc.cfg;
+  let userSnap: Uint8Array | null = null;
   if (desc.disk) {
     disk = await ChunkDisk.load(mod, base, desc.disk, (msg) => post({ type: 'log', message: msg }));
     mod.disk = disk;
+    disk.onWrite = scheduleSave;
     if (resetOnly) {
       disk.reset();
       post({ type: 'reset-done' });
       return;
     }
+    userSnap = disk.open(!forceCold);
     post({ type: 'disk', stats: disk.stats });
   }
-  // The shipped snapshot is only valid with the pristine disk: once the
-  // user has changes, boot normally (Phase 2 step 8 adds user snapshots).
-  if (desc.snapshot && !forceCold && !disk?.hasUserData) {
+  // The shipped snapshot is only valid with the pristine disk. Once the user
+  // has changes, resume their own save (valid only with the overlay exactly
+  // as it was then), else cold boot with the overlay.
+  if (userSnap) {
+    const p = mod._malloc(userSnap.length);
+    mod.HEAPU8.set(userSnap, p);
+    mod._vm_set_snapshot_raw(p, userSnap.length); // C owns p now
+    if (desc.snapshot) cfg = desc.snapshot.cfg;
+    post({ type: 'log', message: `resuming your saved machine (${(userSnap.length / 2 ** 20).toFixed(1)} MB)` });
+  } else if (desc.snapshot && !forceCold && !disk?.hasUserData) {
     const snap = await fetchCached(base + desc.snapshot.file);
     const p = mod._malloc(snap.length);
     mod.HEAPU8.set(snap, p);
@@ -249,6 +291,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       for (const b of m.data) input.push(b);
       drainInput();
       wake();
+      break;
+    case 'save':
+      saveNow(m.reason);
       break;
     case 'reset':
       // Stop the guest first so it can't write after the overlay is gone.

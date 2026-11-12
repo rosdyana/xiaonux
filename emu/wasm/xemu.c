@@ -188,6 +188,15 @@ EMSCRIPTEN_KEEPALIVE int vm_set_snapshot(const uint8_t *buf, int len, int raw_le
     return 0;
 }
 
+/* called from JS before vm_start: an uncompressed snapshot in a buffer
+   from _malloc; we take ownership. */
+EMSCRIPTEN_KEEPALIVE void vm_set_snapshot_raw(uint8_t *buf, int len)
+{
+    free(pending_snapshot);
+    pending_snapshot = buf;
+    pending_snapshot_len = len;
+}
+
 /* called from JS: save the running machine. Returns a malloc'd buffer
    (length in *plen) or NULL if busy; JS frees it. */
 EMSCRIPTEN_KEEPALIVE uint8_t *vm_snapshot_save(int *plen)

@@ -98,6 +98,9 @@ function boot(forceCold = false) {
         worker = null;
         boot(true);
         break;
+      case 'saved':
+        console.info(`[xiaonux] saved machine (${m.reason}) ${(m.bytes / 2 ** 20).toFixed(1)} MB in ${m.ms} ms`);
+        break;
       case 'reset-done':
         console.info('[xiaonux] machine reset: your changes were deleted');
         location.reload();
@@ -138,6 +141,13 @@ resetBtn.addEventListener('click', () => {
   }
 });
 if (params.has('autoboot')) boot();
+
+// Save the running machine when the tab is hidden or closed.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') send({ type: 'save', reason: 'hidden' });
+});
+window.addEventListener('pagehide', () => send({ type: 'save', reason: 'pagehide' }));
+(window as unknown as { xiaonuxSave: () => void }).xiaonuxSave = () => send({ type: 'save', reason: 'manual' });
 
 // For automation: read the terminal text and type into the guest.
 (window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {
