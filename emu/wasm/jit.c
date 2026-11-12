@@ -290,10 +290,17 @@ enum {
     OP_ADDW, OP_SUBW, OP_SLLW, OP_SRLW, OP_SRAW,
     OP_MUL, OP_MULH, OP_MULHSU, OP_MULHU, OP_DIV, OP_DIVU, OP_REM, OP_REMU,
     OP_MULW, OP_DIVW, OP_DIVUW, OP_REMW, OP_REMUW,
+    OP_NOP,      /* fence */
+    OP_FLD, OP_FSD, OP_FSGNJ_D, OP_FMV_X_D, OP_FMV_D_X,   /* inline FP (no fflags) */
+    OP_EXEC1,    /* run this one instruction on the interpreter (FP, AMO, FP CSRs) */
 };
 
 typedef struct {
-    uint8_t op, rd, rs1, rs2, len;
+    uint8_t op, rd, rs1, rs2, len;   /* rd/rs1/rs2: integer registers (0 = none) */
+    uint8_t stores;   /* EXEC1: may write memory (checker can't replay it) */
+    uint8_t frd, frs1, frs2;         /* FP registers of inline FP ops */
+    uint8_t sub;                     /* FSGNJ_D: 0 = j, 1 = jn, 2 = jx */
+    uint32_t raw;                    /* the instruction (for the FP-disabled fallback) */
     int64_t imm;
 } Insn;
 
@@ -310,7 +317,52 @@ static int decode32(uint32_t x, Insn *d)
     d->rs1 = BITS(x, 19, 15);
     d->rs2 = BITS(x, 24, 20);
     d->len = 4;
+    d->stores = 0;
+    d->frd = d->frs1 = d->frs2 = 0;
+    d->raw = x;
+    if (opc == 0x07 && f3 == 3) {                           /* fld */
+        d->op = OP_FLD; d->frd = d->rd; d->rd = 0; d->rs2 = 0; d->imm = sext(x >> 20, 12); return 1;
+    }
+    if (opc == 0x27 && f3 == 3) {                           /* fsd */
+        d->op = OP_FSD; d->frs2 = d->rs2; d->rs2 = 0; d->rd = 0;
+        d->imm = sext((BITS(x, 31, 25) << 5) | BITS(x, 11, 7), 12); return 1;
+    }
+    if (opc == 0x53 && f7 == 0x11 && f3 <= 2) {            /* fsgnj{,n,x}.d */
+        d->op = OP_FSGNJ_D; d->sub = f3; d->frd = d->rd; d->frs1 = d->rs1; d->frs2 = d->rs2;
+        d->rd = d->rs1 = d->rs2 = 0; return 1;
+    }
+    if (opc == 0x53 && f7 == 0x71 && f3 == 0 && d->rs2 == 0) { /* fmv.x.d */
+        d->op = OP_FMV_X_D; d->frs1 = d->rs1; d->rs1 = 0; return 1;
+    }
+    if (opc == 0x53 && f7 == 0x79 && f3 == 0 && d->rs2 == 0) { /* fmv.d.x */
+        d->op = OP_FMV_D_X; d->frd = d->rd; d->rd = 0; return 1;
+    }
     switch (opc) {
+    /* run on the interpreter, one instruction at a time (exact FP semantics:
+       rounding modes, fflags, NaN boxing). d->rd = integer destination or 0. */
+    case 0x07: d->op = OP_EXEC1; d->rd = 0; d->rs2 = 0; return 1;                  /* fl* */
+    case 0x27: d->op = OP_EXEC1; d->rd = 0; d->stores = 1; return 1;               /* fs* */
+    case 0x43: case 0x47: case 0x4b: case 0x4f: d->op = OP_EXEC1; d->rd = 0; d->rs1 = d->rs2 = 0; return 1;
+    case 0x53: {
+        /* integer results: fcvt.{w,wu,l,lu}.*, fmv.x.*, fclass, feq/flt/fle */
+        uint32_t f = f7 & ~1u;  /* drop the format bit */
+        int int_rd = f == 0x60 || f == 0x70 || f == 0x50;
+        int int_rs1 = f == 0x68 || f == 0x78;          /* fcvt.*.{w,l}, fmv.*.x */
+        d->op = OP_EXEC1;
+        if (!int_rd) d->rd = 0;
+        if (!int_rs1) d->rs1 = 0;
+        d->rs2 = 0;
+        return 1;
+    }
+    case 0x2f: d->op = OP_EXEC1; d->stores = 1; return 1;                           /* AMO, LR/SC */
+    case 0x0f: if (f3 != 0) return 0; d->op = OP_NOP; d->rd = d->rs1 = d->rs2 = 0; return 1; /* fence */
+    case 0x73: {                                                                    /* FP CSRs only */
+        uint32_t csr = x >> 20;
+        if (f3 == 0 || f3 == 4 || csr < 1 || csr > 3) return 0;
+        d->op = OP_EXEC1; d->rs2 = 0;
+        if (f3 >= 5) d->rs1 = 0;  /* immediate forms */
+        return 1;
+    }
     case 0x37: d->op = OP_LUI; d->imm = (int32_t)(x & 0xfffff000); return 1;
     case 0x17: d->op = OP_AUIPC; d->imm = (int32_t)(x & 0xfffff000); return 1;
     case 0x6f:
@@ -402,6 +454,26 @@ static int decode16(uint32_t x, Insn *d)
     uint32_t rdp = BITS(x, 4, 2) + 8, rs1p = BITS(x, 9, 7) + 8;
     d->len = 2;
     d->rd = d->rs1 = d->rs2 = 0;
+    d->stores = 0;
+    d->frd = d->frs1 = d->frs2 = 0;
+    d->raw = x;
+    if (q == 0 && (f3 == 1 || f3 == 5)) {   /* c.fld / c.fsd: offsets as c.ld / c.sd */
+        d->op = f3 == 1 ? OP_FLD : OP_FSD;
+        d->rs1 = rs1p;
+        if (f3 == 1) d->frd = rdp; else d->frs2 = rdp;
+        d->imm = (BITS(x, 12, 10) << 3) | (BITS(x, 6, 5) << 6);
+        return 1;
+    }
+    if (q == 2 && f3 == 1) {                 /* c.fldsp: offsets as c.ldsp */
+        d->op = OP_FLD; d->rs1 = 2; d->frd = rd;
+        d->imm = (BITS(x, 12, 12) << 5) | (BITS(x, 6, 5) << 3) | (BITS(x, 4, 2) << 6);
+        return 1;
+    }
+    if (q == 2 && f3 == 5) {                 /* c.fsdsp: offsets as c.sdsp */
+        d->op = OP_FSD; d->rs1 = 2; d->frs2 = rs2;
+        d->imm = (BITS(x, 12, 10) << 3) | (BITS(x, 9, 7) << 6);
+        return 1;
+    }
     switch (q) {
     case 0:
         switch (f3) {
@@ -568,7 +640,7 @@ enum {
 #define T_VOID 0x40
 
 /* function indices: imports first */
-enum { F_LD = 0, F_ST, F_MULH, F_DIV, N_IMPORTS };
+enum { F_LD = 0, F_ST, F_MULH, F_DIV, F_EXEC1, N_IMPORTS };
 /* locals: 0 = state; 1..31 = x1..x31; then temps */
 enum { L_S = 0, L_PC = 32, L_A = 33, L_V = 34, L_E = 35, N_LOCALS_I64 = 34 /* x1..x31, pc, a, v */ };
 
@@ -593,6 +665,8 @@ typedef struct {
 #define OFF_REG(r) ((uint32_t)(offsetof(RISCVCPUState, reg) + 8 * (r)))
 #define OFF_NCYC   ((uint32_t)offsetof(RISCVCPUState, n_cycles))
 #define OFF_MIP    ((uint32_t)offsetof(RISCVCPUState, mip))
+#define OFF_FREG(r) ((uint32_t)(offsetof(RISCVCPUState, fp_reg) + 8 * (r)))
+#define OFF_FS     ((uint32_t)offsetof(RISCVCPUState, fs))
 #define OFF_MIE    ((uint32_t)offsetof(RISCVCPUState, mie))
 #define OFF_TMP    ((uint32_t)offsetof(RISCVCPUState, xn_tmp))
 #define OFF_TLBR   ((uint32_t)offsetof(RISCVCPUState, tlb_read))
@@ -791,6 +865,87 @@ static void gen_alu(Gen *g, const Insn *d)
     rset(g, d->rd);
 }
 
+/* FP disabled (mstatus.FS == 0): let the interpreter run the instruction
+   (it raises illegal-instruction); the block then leaves either way. */
+static void fp_guard(Gen *g, int k, int64_t off, const Insn *d)
+{
+    Buf *o = g->o;
+    get(o, L_S); mem(o, 0x2d /* i32.load8_u */, 0, OFF_FS); op_(o, W_I32_EQZ);
+    put(o, W_IF); put(o, T_VOID);
+      store_dirty(g); set_pc_off(g, off);
+      get(o, L_S); i32c(o, d->len | (d->stores << 8)); put(o, W_CALL); uleb(o, F_EXEC1); op_(o, 0x1a);
+      charge(g, k + 1); i32c(o, 1); op_(o, W_RETURN);
+    put(o, W_END);
+}
+
+static void fp_dirty(Gen *g)
+{
+    get(g->o, L_S); i32c(g->o, 3); mem(g->o, 0x3a /* i32.store8 */, 0, OFF_FS);
+}
+
+static void gen_fp(Gen *g, const Insn *d, int k, int64_t off)
+{
+    Buf *o = g->o;
+    fp_guard(g, k, off, d);
+    switch (d->op) {
+    case OP_FLD: {
+        /* like ld, but the value goes to fp_reg[frd] */
+        Insn t = *d;
+        gen_addr(g, &t, OFF_TLBR);
+        get(o, L_S); /* address for the final store */
+        if (xn_check_mode) i32c(o, 0); else gen_tlb_hit(g, 8);
+        put(o, W_IF); put(o, T_I64);
+          gen_host_addr(g); mem(o, W_I64_LOAD, 3, 0);
+        put(o, W_ELSE);
+          store_dirty(g); set_pc_off(g, off);
+          get(o, L_S); get(o, L_A); i32c(o, 3); put(o, W_CALL); uleb(o, F_LD);
+          put(o, W_IF); put(o, T_VOID); exit_exception(g, k, g->n); put(o, W_END);
+          get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_TMP);
+        put(o, W_END);
+        mem(o, W_I64_STORE, 3, OFF_FREG(d->frd));
+        fp_dirty(g);
+        break;
+    }
+    case OP_FSD:
+        gen_addr(g, d, OFF_TLBW);
+        if (xn_check_mode) i32c(o, 0); else gen_tlb_hit(g, 8);
+        put(o, W_IF); put(o, T_VOID);
+          gen_host_addr(g); get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs2)); mem(o, W_I64_STORE, 3, 0);
+        put(o, W_ELSE);
+          store_dirty(g); set_pc_off(g, off);
+          get(o, L_S); get(o, L_A); get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs2)); i32c(o, 3);
+          put(o, W_CALL); uleb(o, F_ST);
+          put(o, W_IF); put(o, T_VOID); exit_exception(g, k, g->n); put(o, W_END);
+        put(o, W_END);
+        break;
+    case OP_FSGNJ_D: {
+        int64_t sign = INT64_MIN;
+        get(o, L_S);
+        get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs1));
+        if (d->sub == 2) {          /* jx: rs1 ^ (rs2 & sign) */
+            get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs2)); i64c(o, sign); op_(o, W_I64_AND);
+            op_(o, W_I64_XOR);
+        } else {                    /* j / jn: (rs1 & ~sign) | ([~]rs2 & sign) */
+            i64c(o, ~sign); op_(o, W_I64_AND);
+            get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs2));
+            if (d->sub == 1) { i64c(o, -1); op_(o, W_I64_XOR); }
+            i64c(o, sign); op_(o, W_I64_AND);
+            op_(o, W_I64_OR);
+        }
+        mem(o, W_I64_STORE, 3, OFF_FREG(d->frd));
+        fp_dirty(g);
+        break;
+    }
+    case OP_FMV_X_D:
+        get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs1)); rset(g, d->rd);
+        break;
+    case OP_FMV_D_X:
+        get(o, L_S); rget(g, d->rs1); mem(o, W_I64_STORE, 3, OFF_FREG(d->frd));
+        fp_dirty(g);
+        break;
+    }
+}
+
 /* Emit the body of one block function. The body sits in a WASM loop so a
    branch back to the block start iterates without leaving the function. */
 static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
@@ -802,7 +957,7 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
     for (k = 0; k < n; k++) {
         g.used |= (1u << ins[k].rd) | (1u << ins[k].rs1) | (1u << ins[k].rs2);
         if (ins[k].op < OP_BEQ || ins[k].op > OP_BGEU) {
-            if (ins[k].op < OP_SB || ins[k].op > OP_SD)
+            if ((ins[k].op < OP_SB || ins[k].op > OP_SD) && ins[k].op != OP_NOP && ins[k].op != OP_FSD)
                 g.dirty |= 1u << ins[k].rd;
         }
     }
@@ -862,6 +1017,23 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
             put(o, W_END);
             break;
         }
+        case OP_NOP:
+            break;
+        case OP_FLD: case OP_FSD: case OP_FSGNJ_D: case OP_FMV_X_D: case OP_FMV_D_X:
+            gen_fp(&g, d, k, off);
+            break;
+        case OP_EXEC1:
+            /* spill, run it on the interpreter, reload its integer result */
+            store_dirty(&g);
+            set_pc_off(&g, off);
+            get(o, L_S); i32c(o, d->len | (d->stores << 8)); put(o, W_CALL); uleb(o, F_EXEC1);
+            put(o, W_IF); put(o, T_VOID);
+              /* pc didn't advance normally (exception, interrupt): state is
+                 already in memory, just count and leave */
+              charge(&g, k + 1); i32c(o, 1); op_(o, W_RETURN);
+            put(o, W_END);
+            if (d->rd) { get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_REG(d->rd)); set(o, d->rd); }
+            break;
         default:
             gen_alu(&g, d);
             break;
@@ -887,7 +1059,7 @@ EM_JS(int, js_jit_instantiate, (const uint8_t *buf, int len, int nfuncs), {
         const mod = new WebAssembly.Module(HEAPU8.slice(buf, buf + len));
         inst = new WebAssembly.Instance(mod, { e: {
             m: wasmMemory, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
-            mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'],
+            mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'], x1: wasmExports['xn_jit_exec1'],
         } });
     } catch (e) {
         console.error('[xiaonux] jit module failed', e);
@@ -965,19 +1137,21 @@ void xn_jit_flush(void)
 
     put_bytes(&mod, "\0asm\1\0\0\0", 8);
     /* types: 0 block (i32)->i32, 1 ld (i32,i64,i32)->i32, 2 st (i32,i64,i64,i32)->i32, 3 (i64,i64,i32)->i64 */
-    uleb(&sec, 4);
+    uleb(&sec, 5);
     type_fn(&sec, 1, (uint8_t[]){ T_I32 }, 1, T_I32);
     type_fn(&sec, 3, (uint8_t[]){ T_I32, T_I64, T_I32 }, 1, T_I32);
     type_fn(&sec, 4, (uint8_t[]){ T_I32, T_I64, T_I64, T_I32 }, 1, T_I32);
     type_fn(&sec, 3, (uint8_t[]){ T_I64, T_I64, T_I32 }, 1, T_I64);
+    type_fn(&sec, 2, (uint8_t[]){ T_I32, T_I32 }, 1, T_I32);   /* 4: exec1(s, len) */
     section(&mod, 1, &sec);
     /* imports */
-    uleb(&sec, 5);
+    uleb(&sec, 6);
     put_str(&sec, "e"); put_str(&sec, "m"); put(&sec, 0x02); put(&sec, 0x00); uleb(&sec, 1); /* memory, min 1 */
     put_str(&sec, "e"); put_str(&sec, "ld"); put(&sec, 0x00); uleb(&sec, 1);
     put_str(&sec, "e"); put_str(&sec, "st"); put(&sec, 0x00); uleb(&sec, 2);
     put_str(&sec, "e"); put_str(&sec, "mulh"); put(&sec, 0x00); uleb(&sec, 3);
     put_str(&sec, "e"); put_str(&sec, "div"); put(&sec, 0x00); uleb(&sec, 3);
+    put_str(&sec, "e"); put_str(&sec, "x1"); put(&sec, 0x00); uleb(&sec, 4);
     section(&mod, 2, &sec);
     /* functions */
     uleb(&sec, nf);

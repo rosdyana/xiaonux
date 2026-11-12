@@ -15,7 +15,7 @@ CFLAGS := -O3 -flto -Wall -Wno-unused-but-set-variable -Wno-deprecated-non-proto
 LDFLAGS := -O3 -flto -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker \
   -sEXPORT_NAME=createXemu -sNO_EXIT_RUNTIME=1 -sFILESYSTEM=0 \
   -sINITIAL_MEMORY=64MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sALLOW_TABLE_GROWTH=1 \
-  -sEXPORTED_FUNCTIONS=_xn_jit_ld,_xn_jit_st,_xn_jit_mulh,_xn_jit_div,_xn_jit_set_enabled,_xn_jit_set_check,_xn_jit_stat,_vm_start,_vm_set_snapshot,_vm_set_snapshot_raw,_vm_snapshot_save,_agent_send,_blk_chunk_setup,_blk_chunk_loaded,_blk_overlay_mark,_blk_overlay_clear,_blk_overlay_count,_blk_prefetch,_blk_stat,_vm_run_slice,_vm_insn_count,_console_queue_char,_console_resize,_net_write_packet,_net_can_write,_net_set_carrier,_malloc,_free \
+  -sEXPORTED_FUNCTIONS=_xn_jit_ld,_xn_jit_st,_xn_jit_mulh,_xn_jit_div,_xn_jit_exec1,_xn_jit_set_enabled,_xn_jit_set_check,_xn_jit_stat,_vm_start,_vm_set_snapshot,_vm_set_snapshot_raw,_vm_snapshot_save,_agent_send,_blk_chunk_setup,_blk_chunk_loaded,_blk_overlay_mark,_blk_overlay_clear,_blk_overlay_count,_blk_prefetch,_blk_stat,_vm_run_slice,_vm_insn_count,_console_queue_char,_console_resize,_net_write_packet,_net_can_write,_net_set_carrier,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,HEAPU8 \
   --js-library wasm/lib.js
 

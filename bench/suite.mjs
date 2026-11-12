@@ -11,6 +11,7 @@ export const TESTS = {
   shell_loop: `sh -c 'i=0; while [ $i -lt 100000 ]; do i=$((i+1)); done'`,
   python: `python3 -c "sum(i*i for i in range(2_000_000))"`,
   python_start: `python3 -c pass`,
+  python_float: `python3 -c "sum(i*0.5 for i in range(1_000_000))"`,
   gzip: `gzip -c /usr/bin/python3* > /dev/null`,
 };
 const RUNS = 3;

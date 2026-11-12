@@ -1569,6 +1569,28 @@ EMSCRIPTEN_KEEPALIVE int xn_jit_st(RISCVCPUState *s, uint64_t addr, uint64_t val
     return 0;
 }
 
+static void glue(riscv_cpu_interp_x, 64)(RISCVCPUState *s, int n_cycles1);
+
+/* Run exactly the one instruction at s->pc on the interpreter (registers are
+   already spilled). Returns 0 if pc advanced by len (carry on), 1 otherwise
+   (exception or interrupt taken: the block must leave). */
+EMSCRIPTEN_KEEPALIVE int xn_jit_exec1(RISCVCPUState *s, int arg)
+{
+    int len = arg & 0xff, stores = arg >> 8;
+    target_ulong next = s->pc + len;
+    int ncyc = s->n_cycles;
+    uint64_t icount = s->insn_counter;
+    int was_step = xn_step_mode;
+    if (xn_log_on && stores)
+        xn_mmio_touched = 1; /* the checker can't undo its stores: trust this block */
+    xn_step_mode = 1;
+    glue(riscv_cpu_interp_x, 64)(s, 1);
+    xn_step_mode = was_step;
+    s->n_cycles = ncyc;          /* the block does the counting */
+    s->insn_counter = icount;
+    return s->pc != next;
+}
+
 EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_mulh(int64_t a, int64_t b, int kind)
 {
     switch (kind) {
@@ -1601,7 +1623,9 @@ EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_div(int64_t a, int64_t b, int kind)
    interpreter's result is kept. */
 typedef struct {
     target_ulong pc, reg[32], mstatus, mepc, mcause, mtval, sepc, scause, stval;
-    uint8_t priv;
+    fp_uint fp_reg[32];
+    uint32_t fflags;
+    uint8_t priv, frm, fs;
 } XnCpu;
 
 static void xn_cpu_save(RISCVCPUState *s, XnCpu *c)
@@ -1610,6 +1634,8 @@ static void xn_cpu_save(RISCVCPUState *s, XnCpu *c)
     c->pc = s->pc; memcpy(c->reg, s->reg, sizeof(c->reg)); c->priv = s->priv;
     c->mstatus = s->mstatus; c->mepc = s->mepc; c->mcause = s->mcause; c->mtval = s->mtval;
     c->sepc = s->sepc; c->scause = s->scause; c->stval = s->stval;
+    memcpy(c->fp_reg, s->fp_reg, sizeof(c->fp_reg));
+    c->fflags = s->fflags; c->frm = s->frm; c->fs = s->fs;
 }
 
 static void xn_cpu_load(RISCVCPUState *s, const XnCpu *c)
@@ -1618,6 +1644,8 @@ static void xn_cpu_load(RISCVCPUState *s, const XnCpu *c)
     if (s->priv != c->priv) { s->priv = c->priv; tlb_flush_all(s); }
     s->mstatus = c->mstatus; s->mepc = c->mepc; s->mcause = c->mcause; s->mtval = c->mtval;
     s->sepc = c->sepc; s->scause = c->scause; s->stval = c->stval;
+    memcpy(s->fp_reg, c->fp_reg, sizeof(c->fp_reg));
+    s->fflags = c->fflags; s->frm = c->frm; s->fs = c->fs;
 }
 
 static void glue(riscv_cpu_interp_x, 64)(RISCVCPUState *s, int n_cycles1);
@@ -1630,16 +1658,20 @@ void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
     uint64_t icount = s->insn_counter;
 
     xn_cpu_save(s, &before);
+    int rc;
     xn_log_on = 1; xn_nlog = 0; xn_mmio_touched = 0;
-    f(s);
+    rc = f(s);
     xn_log_on = 0;
     n = ncyc - s->n_cycles; /* superblocks/loops: what actually ran */
     if (xn_mmio_touched)
         return; /* device side effects can't be replayed: trust the block */
     xn_cpu_save(s, &jit);
+    /* back to the block's privilege first: undoing user stores from the
+       trap handler's S-mode would fail silently */
+    xn_cpu_load(s, &before);
     for (i = xn_nlog - 1; i >= 0; i--)
         target_write_slow(s, xn_log[i].addr, xn_log[i].old, xn_log[i].log2);
-    xn_cpu_load(s, &before);
+    s->pending_exception = -1;
 
     xn_step_mode = 1;
     glue(riscv_cpu_interp_x, 64)(s, n);
@@ -1650,15 +1682,22 @@ void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
 
     if (memcmp(&jit, &interp, sizeof(jit)) != 0 && reports < 20) {
         reports++;
-        fprintf(stderr, "[xn-check] MISMATCH block pc=%llx n=%d code=", (unsigned long long)before.pc, n);
-        for (i = 0; i < 16; i++) fprintf(stderr, "%02x", code[i]);
+        fprintf(stderr, "[xn-check] MISMATCH%s block pc=%llx n=%d code=", rc ? "(exc-exit)" : "", (unsigned long long)before.pc, n);
+        for (i = 0; i < 4 * n && i < 256; i++) fprintf(stderr, "%02x", code[i]);
         fprintf(stderr, " | jit pc=%llx interp pc=%llx priv %d/%d scause %llx/%llx", (unsigned long long)jit.pc,
                 (unsigned long long)interp.pc, jit.priv, interp.priv, (unsigned long long)jit.scause,
                 (unsigned long long)interp.scause);
+        for (i = 0; i < 32; i++)
+            if (jit.fp_reg[i] != interp.fp_reg[i])
+                fprintf(stderr, " | f%d jit=%llx interp=%llx", i, (unsigned long long)jit.fp_reg[i], (unsigned long long)interp.fp_reg[i]);
+        if (jit.fflags != interp.fflags || jit.fs != interp.fs)
+            fprintf(stderr, " | fflags %x/%x fs %d/%d", jit.fflags, interp.fflags, jit.fs, interp.fs);
         for (i = 1; i < 32; i++)
             if (jit.reg[i] != interp.reg[i])
                 fprintf(stderr, " | x%d jit=%llx interp=%llx (before %llx)", i, (unsigned long long)jit.reg[i],
                         (unsigned long long)interp.reg[i], (unsigned long long)before.reg[i]);
+        fprintf(stderr, " | BEFORE");
+        for (i = 1; i < 32; i++) fprintf(stderr, " %llx", (unsigned long long)before.reg[i]);
         fprintf(stderr, "\n");
         {
             extern void xn_jit_dump(int fn);
