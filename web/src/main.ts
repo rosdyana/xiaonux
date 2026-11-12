@@ -2,7 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
-import type { FromWorker, ToWorker } from './protocol';
+import type { FromWorker, NetConfig, ToWorker } from './protocol';
 
 const params = new URLSearchParams(location.search);
 const BOOT_URL = params.get('boot') ?? '/vm/boot.json';
@@ -14,6 +14,47 @@ const statusEl = $('status');
 const statsEl = $('stats');
 const bootBtn = $('boot') as HTMLButtonElement;
 const resetBtn = $('reset') as HTMLButtonElement;
+const netSel = $('netmode') as HTMLSelectElement;
+const netStatusEl = $('netstatus');
+
+// ----- network settings (per browser) -----
+interface NetPrefs { mode: 'off' | 'helper' | 'relay'; helperPort?: number; helperToken?: string }
+const NET_KEY = 'xiaonux.net';
+function loadNetPrefs(): NetPrefs {
+  try { return JSON.parse(localStorage.getItem(NET_KEY) ?? '') as NetPrefs; } catch { return { mode: 'off' }; }
+}
+function saveNetPrefs(p: NetPrefs) {
+  try { localStorage.setItem(NET_KEY, JSON.stringify(p)); } catch { /* private mode */ }
+}
+let netPrefs = loadNetPrefs();
+// The helper prints a pairing link: ?net=helper&port=8787&token=...
+if (params.get('net') === 'helper' && params.get('token')) {
+  netPrefs = { mode: 'helper', helperPort: Number(params.get('port') ?? 8787), helperToken: params.get('token')! };
+  saveNetPrefs(netPrefs);
+  history.replaceState(null, '', location.pathname + (params.has('autoboot') ? '?autoboot' : ''));
+}
+netSel.value = netPrefs.mode;
+
+function netConfig(): NetConfig {
+  if (netPrefs.mode === 'helper' && netPrefs.helperToken) {
+    const base = `127.0.0.1:${netPrefs.helperPort ?? 8787}`;
+    const t = encodeURIComponent(netPrefs.helperToken);
+    return { mode: 'helper', wsUrl: `ws://${base}/wisp?token=${t}`, pingUrl: `http://${base}/ping?token=${t}` };
+  }
+  return { mode: 'off', wsUrl: '', pingUrl: '' };
+}
+function showNet(text: string, blocked = false) {
+  netStatusEl.textContent = text;
+  netStatusEl.classList.toggle('blocked', blocked);
+}
+showNet(netPrefs.mode === 'helper' && !netPrefs.helperToken ? 'run xiaonux-net and open its link' : '');
+netSel.addEventListener('change', () => {
+  netPrefs.mode = netSel.value as NetPrefs['mode'];
+  saveNetPrefs(netPrefs);
+  if (netPrefs.mode === 'helper' && !netPrefs.helperToken) showNet('run xiaonux-net and open its link');
+  else showNet(netPrefs.mode === 'off' ? 'off' : '');
+  send({ type: 'net', net: netConfig() });
+});
 const diskEl = $('disk');
 let diskStats: Record<string, unknown> = {};
 
@@ -98,6 +139,14 @@ function boot(forceCold = false) {
         worker = null;
         boot(true);
         break;
+      case 'net':
+        showNet(m.status === 'connected' ? `connected (${m.mode === 'helper' ? 'this computer' : 'relay'})`
+          : m.status === 'connecting' ? 'connecting…' : `disconnected${m.detail ? ` (${m.detail})` : ''}`);
+        break;
+      case 'net-blocked':
+        showNet(`blocked: ${m.host} (${m.reason})`, true);
+        console.info(`[xiaonux] blocked ${m.host}: ${m.reason}`);
+        break;
       case 'saved':
         console.info(`[xiaonux] saved machine (${m.reason}) ${(m.bytes / 2 ** 20).toFixed(1)} MB in ${m.ms} ms`);
         break;
@@ -114,7 +163,7 @@ function boot(forceCold = false) {
         break;
     }
   };
-  send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, forceCold: forceCold || params.has('cold'), record: params.has('record') });
+  send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, forceCold: forceCold || params.has('cold'), record: params.has('record'), net: netConfig() });
   term.focus();
 }
 

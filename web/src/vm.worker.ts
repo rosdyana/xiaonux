@@ -1,7 +1,10 @@
 /// <reference lib="webworker" />
 // Runs TinyEMU (WASM) and its main loop. The page only draws the terminal.
-import type { FromWorker, ToWorker } from './protocol';
+import type { FromWorker, NetConfig, ToWorker } from './protocol';
 import { ChunkDisk, type DiskModule } from './disk';
+import { NetStack } from './net/stack';
+import { noExit, type Exit } from './net/exit';
+import { WispExit } from './net/wisp';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -11,6 +14,8 @@ interface Xemu extends DiskModule {
   _vm_set_snapshot_raw(ptr: number, len: number): void;
   _vm_snapshot_save(plen: number): number;
   _agent_send(ptr: number, len: number): number;
+  _net_write_packet(ptr: number, len: number): void;
+  _net_can_write(): number;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
   _console_queue_char(c: number): number;
   _console_resize(): void;
@@ -39,6 +44,27 @@ let cycles = 0;
 let lastStats = 0;
 let outTotal = 0;
 let disk: ChunkDisk | null = null;
+
+// ----- network -----
+const rxQueue: Uint8Array[] = []; // frames for the guest, waiting for RX buffers
+let net: NetStack | null = null;
+
+function pumpRx() {
+  if (!vm) return;
+  while (rxQueue.length && vm._net_can_write()) {
+    const f = rxQueue.shift()!;
+    const p = vm._malloc(f.length);
+    vm.HEAPU8.set(f, p);
+    vm._net_write_packet(p, f.length);
+    vm._free(p);
+  }
+}
+
+function makeExit(cfg: NetConfig | undefined): Exit {
+  if (!cfg || cfg.mode === 'off') return noExit;
+  return new WispExit(cfg.mode, cfg.wsUrl, cfg.pingUrl, (status, detail) =>
+    post({ type: 'net', status, mode: cfg.mode, detail }));
+}
 
 // MessageChannel gives a macrotask yield without setTimeout's 4 ms clamp.
 const chan = new MessageChannel();
@@ -74,6 +100,7 @@ function tick() {
   let delay = 0;
   do {
     drainInput();
+    pumpRx();
     delay = vm._vm_run_slice(SLICE_CYCLES, CHUNK_CYCLES);
     if (delay === 0) cycles += SLICE_CYCLES;
   } while (delay === 0 && performance.now() - start < SLICE_BUDGET_MS);
@@ -214,7 +241,7 @@ async function fetchCached(url: string): Promise<Uint8Array> {
   return b;
 }
 
-async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false) {
+async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false, netCfg?: NetConfig) {
   t0 = performance.now();
   const bootAbs = new URL(bootUrl, self.location.href);
   const base = new URL('.', bootAbs).href;
@@ -232,6 +259,10 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       outBytes += bytes.length;
     },
     onAgent,
+    onNetPacket: (f: Uint8Array) => {
+      net?.handleFrame(f);
+      pumpRx();
+    },
     onFetch: (url: string, bytes: number) => post({ type: 'fetch', url, bytes }),
     onReady: (restored: number) => {
       if (restored < 0) {
@@ -252,6 +283,18 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     },
   });
   vm = mod;
+  net = new NetStack(
+    (f) => {
+      rxQueue.push(f);
+      pumpRx();
+      wake();
+    },
+    makeExit(netCfg),
+    {
+      blocked: (host, reason) => post({ type: 'net-blocked', host, reason }),
+      activity: () => {},
+    },
+  );
   let cfg = desc.cfg;
   let userSnap: Uint8Array | null = null;
   if (desc.disk) {
@@ -285,14 +328,14 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     if (rc === 0) cfg = desc.snapshot.cfg;
     else post({ type: 'log', message: 'snapshot failed to decode; cold boot' });
   }
-  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [base + cfg, ramMb, cmdline, 0]);
+  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [base + cfg, ramMb, cmdline, 1]);
 }
 
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'start':
-      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold, m.record).catch((err) =>
+      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold, m.record, m.net).catch((err) =>
         post({ type: 'error', message: String(err?.stack ?? err) }),
       );
       break;
@@ -300,6 +343,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       for (const b of m.data) input.push(b);
       drainInput();
       wake();
+      break;
+    case 'net':
+      net?.resetAll();
+      if (net) net.exit = makeExit(m.net);
       break;
     case 'save':
       saveNow(m.reason);

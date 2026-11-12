@@ -1,0 +1,21 @@
+[package]
+name = "xiaonux-net"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Lets the xiaonux browser VM use this computer's internet (WISP over a localhost WebSocket)"
+
+[dependencies]
+tokio = { version = "1", default-features = false, features = ["rt", "net", "io-util", "macros", "time", "sync"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+sha1 = { version = "0.10", default-features = false }
+base64 = "0.22"
+getrandom = "0.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

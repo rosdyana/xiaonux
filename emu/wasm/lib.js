@@ -42,8 +42,9 @@ addToLibrary({
     if (Module.onAgent) Module.onAgent(HEAPU8.slice(buf, buf + len));
   },
 
+  // A frame the guest sent; the worker's network stack handles it.
   net_recv_packet: function (bs, buf, len) {
-    // Phase 3: hand guest Ethernet frames to slirp/WISP. Dropped for now.
+    if (Module.onNetPacket) Module.onNetPacket(HEAPU8.slice(buf, buf + len));
   },
 
   fs_export_file: function (filename, buf, len) {},

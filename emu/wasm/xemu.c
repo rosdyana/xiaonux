@@ -115,6 +115,13 @@ EMSCRIPTEN_KEEPALIVE void net_write_packet(const uint8_t *buf, int buf_len)
         net->device_write_packet(net, buf, buf_len);
 }
 
+/* called from JS: can the guest take another frame right now? */
+EMSCRIPTEN_KEEPALIVE int net_can_write(void)
+{
+    EthernetDevice *net = global_vm ? global_vm->net : NULL;
+    return net && net->device_can_write_packet(net);
+}
+
 EMSCRIPTEN_KEEPALIVE void net_set_carrier(BOOL carrier_state)
 {
     EthernetDevice *net;

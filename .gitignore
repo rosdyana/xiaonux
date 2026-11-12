@@ -6,3 +6,4 @@ node_modules/
 *.ext4
 *.tar.gz
 .DS_Store
+target/

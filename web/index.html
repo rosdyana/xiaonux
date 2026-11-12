@@ -10,6 +10,14 @@
       <strong>xiaonux</strong>
       <button id="boot">Boot</button>
       <button id="reset" class="secondary">Reset machine</button>
+      <label class="net">Network
+        <select id="netmode">
+          <option value="off">Off</option>
+          <option value="helper">This computer</option>
+          <option value="relay" disabled>Relay (allowed hosts)</option>
+        </select>
+      </label>
+      <span id="netstatus"></span>
       <span id="status">idle</span>
       <span id="disk"></span>
       <span id="stats"></span>

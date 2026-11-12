@@ -1,13 +1,21 @@
 import type { DiskStats } from './disk';
 
+/** Where guest connections leave: off, the local helper, or the relay. */
+export interface NetConfig {
+  mode: 'off' | 'helper' | 'relay';
+  wsUrl: string;
+  pingUrl: string;
+}
+
 // Messages between the page and the VM worker.
 
 export type ToWorker =
-  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean; record?: boolean }
+  | { type: 'start'; bootUrl: string; ramMb: number; cmdline: string; resetOnly?: boolean; forceCold?: boolean; record?: boolean; net?: NetConfig }
   | { type: 'input'; data: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'reset' }
-  | { type: 'save'; reason: string };
+  | { type: 'save'; reason: string }
+  | { type: 'net'; net: NetConfig };
 
 export type FromWorker =
   | { type: 'console'; data: Uint8Array }
@@ -19,5 +27,7 @@ export type FromWorker =
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
+  | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected'; mode: string; detail?: string }
+  | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }
   | { type: 'error'; message: string };
