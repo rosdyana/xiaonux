@@ -295,6 +295,8 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       activity: () => {},
     },
   );
+  // Our riscv64 wheel index, served inside the worker (works with the network off).
+  net.localHosts.set('wheels.xiaonux', (path) => fetch(base + 'pypi' + path));
   let cfg = desc.cfg;
   let userSnap: Uint8Array | null = null;
   if (desc.disk) {

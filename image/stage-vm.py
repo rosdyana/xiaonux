@@ -25,7 +25,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--bios", required=True)
 ap.add_argument("--kernel", required=True)
 ap.add_argument("--rootfs", required=True)
-ap.add_argument("--cmdline", default="console=hvc0 root=/dev/vda rw earlycon=sbi")
+ap.add_argument("--cmdline", default="console=hvc0 root=/dev/vda rw earlycon=sbi nowatchdog")
 ap.add_argument("--ram", type=int, default=256)
 ap.add_argument("--format", choices=["chunks", "blk"], default="chunks")
 ap.add_argument("--snapshot", action="store_true")
@@ -38,9 +38,9 @@ a = ap.parse_args()
 
 out = a.out
 os.makedirs(out, exist_ok=True)
-# Remove everything but the content-addressed chunk store.
+# Remove everything but the content-addressed chunk store and the wheel index.
 for name in os.listdir(out):
-    if name == "chunks":
+    if name in ("chunks", "pypi"):
         continue
     p = os.path.join(out, name)
     shutil.rmtree(p) if os.path.isdir(p) else os.unlink(p)

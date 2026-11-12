@@ -7,6 +7,7 @@
 
 import { FakeDns } from './dns';
 import type { Exit, ExitStream } from './exit';
+import { localHttpStream, type LocalFetch } from './local-http';
 import {
   ETH_ARP, ETH_IPV4, IP_ICMP, IP_TCP, IP_UDP, buildIpv4, buildTcp, buildUdp, checksum, ip4, ipToString,
   parseIpv4, parseTcp, seqAdd, seqLt, TCP_ACK, TCP_FIN, TCP_PSH, TCP_RST, TCP_SYN, type Mac, type TcpSeg,
@@ -60,6 +61,8 @@ export class NetStack {
   private guestMac: Mac | null = null;
   private conns = new Map<string, Conn>();
   readonly dns = new FakeDns();
+  /** host name -> handler for HTTP served inside the worker (port 80) */
+  readonly localHosts = new Map<string, LocalFetch>();
   stats: NetStats = { connections: 0, open: 0, bytesIn: 0, bytesOut: 0 };
 
   constructor(
@@ -160,7 +163,8 @@ export class NetStack {
         return;
       }
       const host = this.hostFor(dst);
-      if (this.exit.allows && !this.exit.allows(host, seg.dstPort)) {
+      const isLocal = this.localHosts.has(host) && seg.dstPort === 80;
+      if (!isLocal && this.exit.allows && !this.exit.allows(host, seg.dstPort)) {
         this.events.blocked(host, `not on the relay's list (port ${seg.dstPort})`);
         this.rawRst(src, dst, seg); // guest sees "connection refused"
         return;
@@ -212,7 +216,8 @@ export class NetStack {
     this.conns.set(key, c);
     this.stats.connections++;
     this.stats.open++;
-    const stream = this.exit.connect(host, seg.dstPort);
+    const local = seg.dstPort === 80 ? this.localHosts.get(host) : undefined;
+    const stream = local ? localHttpStream(local) : this.exit.connect(host, seg.dstPort);
     c.stream = stream;
     stream.onData = (d) => {
       this.stats.bytesIn += d.length;

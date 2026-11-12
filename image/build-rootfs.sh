@@ -30,7 +30,7 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --customize-hook='printf "127.0.0.1 localhost\n127.0.1.1 '"$HOSTNAME_"'\n" > "$1/etc/hosts"' \
   --customize-hook='echo "/dev/vda / ext4 rw,noatime 0 1" > "$1/etc/fstab"' \
   --customize-hook='echo "root:'"$ROOT_PASSWORD"'" | chroot "$1" chpasswd' \
-  --customize-hook='printf "[global]\nbreak-system-packages = true\n" > "$1/etc/pip.conf"' \
+  --customize-hook='printf "[global]\nbreak-system-packages = true\n# riscv64 wheels for packages PyPI lacks, served by the browser itself\nextra-index-url = http://wheels.xiaonux/simple/\ntrusted-host = wheels.xiaonux\nprefer-binary = true\n" > "$1/etc/pip.conf"' \
   --customize-hook='chroot "$1" systemctl enable serial-getty@hvc0.service' \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-agent /usr/local/sbin" \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-agent.service /etc/systemd/system" \

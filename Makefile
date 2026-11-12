@@ -4,10 +4,14 @@ EMSDK ?= $(HOME)/emsdk
 ORB   ?= /Applications/OrbStack.app/Contents/MacOS/bin/orb
 VM    ?= builder
 EMENV := . $(EMSDK)/emsdk_env.sh >/dev/null 2>&1 &&
-CMDLINE ?= console=hvc0 root=/dev/vda rw earlycon=sbi
+CMDLINE ?= console=hvc0 root=/dev/vda rw earlycon=sbi nowatchdog
 RAM ?= 256
 
-.PHONY: emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
+wheels:         ## build riscv64 wheels (builder VM) and publish the index to dist/vm/pypi
+	$(ORB) -m $(VM) sudo image/build-wheels.sh
+	python3 image/wheel-index.py
+
+.PHONY: wheels emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
 
 emu:            ## native temu + splitimg (debugging)
 	$(MAKE) -C emu
