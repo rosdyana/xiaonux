@@ -48,6 +48,7 @@ interface Conn {
   guestWnd: number; // guest's advertised window
   guestMss: number;
   outQ: Uint8Array[]; // data from the exit not yet sent to the guest
+  gotData: boolean;   // the exit has sent anything
   finPending: boolean; // exit closed: send FIN after outQ drains
   finSent: boolean;
   // guest -> us
@@ -158,6 +159,12 @@ export class NetStack {
         if (!(seg.flags & TCP_RST)) this.rawRst(src, dst, seg);
         return;
       }
+      const host = this.hostFor(dst);
+      if (this.exit.allows && !this.exit.allows(host, seg.dstPort)) {
+        this.events.blocked(host, `not on the relay's list (port ${seg.dstPort})`);
+        this.rawRst(src, dst, seg); // guest sees "connection refused"
+        return;
+      }
       c = this.open(key, src, dst, seg);
       return;
     }
@@ -199,7 +206,7 @@ export class NetStack {
     const c: Conn = {
       key, guestIp: src, guestPort: seg.srcPort, remoteIp: dst, remotePort: seg.dstPort, host,
       state: 'syn-rcvd', sndNxt: seqAdd(iss, 1), sndUna: iss, guestWnd: seg.window,
-      guestMss: Math.min(seg.mss ?? 536, MSS), outQ: [], finPending: false, finSent: false,
+      guestMss: Math.min(seg.mss ?? 536, MSS), outQ: [], gotData: false, finPending: false, finSent: false,
       rcvNxt: seqAdd(seg.seq, 1), stream: null,
     };
     this.conns.set(key, c);
@@ -209,19 +216,15 @@ export class NetStack {
     c.stream = stream;
     stream.onData = (d) => {
       this.stats.bytesIn += d.length;
+      c.gotData = true;
       c.outQ.push(d);
       this.pump(c);
     };
     stream.onClose = (reason) => {
       c.stream = null;
-      if (reason && c.state === 'syn-rcvd' && c.sndUna === iss) {
-        // refused before anything happened: reset the guest's connect()
+      if (reason && !c.gotData) {
+        // the exit refused or failed before any data: reset the connection
         this.events.blocked(host, reason);
-        this.send(c, TCP_RST | TCP_ACK);
-        this.drop(c);
-        return;
-      }
-      if (reason && c.outQ.length === 0 && c.state !== 'established') {
         this.send(c, TCP_RST | TCP_ACK);
         this.drop(c);
         return;

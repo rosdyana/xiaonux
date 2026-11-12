@@ -40,7 +40,17 @@ export class WispExit implements Exit {
     private wsUrl: string,
     private pingUrl: string,
     private onStatus: (s: WispStatus, detail?: string) => void = () => {},
+    private allowed?: string[],
+    private ports?: number[],
   ) {}
+
+  allows(host: string, port: number): boolean {
+    if (this.ports && !this.ports.includes(port)) return false;
+    if (!this.allowed) return true;
+    const h = host.toLowerCase();
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) return false;
+    return this.allowed.some((a) => (a.startsWith('*.') ? h.endsWith(a.slice(1)) || h === a.slice(2) : h === a.toLowerCase()));
+  }
 
   private ensure(): Promise<void> {
     if (this.ready) return this.ready;

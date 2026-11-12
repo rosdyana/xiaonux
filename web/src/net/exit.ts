@@ -15,6 +15,8 @@ export interface Exit {
   connect(host: string, port: number): ExitStream;
   /** round-trip time in ms, or null if the host is unreachable / not allowed */
   ping(host: string): Promise<number | null>;
+  /** Known-refused destinations can be rejected before the guest sends anything. */
+  allows?(host: string, port: number): boolean;
 }
 
 /** No network: every connection is refused. */

@@ -5,6 +5,9 @@ export interface NetConfig {
   mode: 'off' | 'helper' | 'relay';
   wsUrl: string;
   pingUrl: string;
+  /** relay only: host names it will connect to ("*.x" = subdomains) and ports */
+  allowed?: string[];
+  ports?: number[];
 }
 
 // Messages between the page and the VM worker.

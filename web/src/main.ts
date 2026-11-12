@@ -33,9 +33,69 @@ if (params.get('net') === 'helper' && params.get('token')) {
   saveNetPrefs(netPrefs);
   history.replaceState(null, '', location.pathname + (params.has('autoboot') ? '?autoboot' : ''));
 }
+if (params.get('net') === 'relay' || params.get('net') === 'off') {
+  netPrefs = { ...netPrefs, mode: params.get('net') as NetPrefs['mode'] };
+  saveNetPrefs(netPrefs);
+}
 netSel.value = netPrefs.mode;
 
+// ----- relay (Cloudflare Worker): a Turnstile check buys a 1 h session -----
+const RELAY_URL = (params.get('relay') ?? import.meta.env.VITE_RELAY_URL ?? '').replace(/\/$/, '');
+const TURNSTILE_SITEKEY: string = import.meta.env.VITE_TURNSTILE_SITEKEY ?? '';
+let relaySession: { session: string; expires: number; allowed?: string[]; ports?: number[] } | null = null;
+
+function turnstileToken(): Promise<string> {
+  if (!TURNSTILE_SITEKEY) return Promise.resolve(''); // local dev relay (DEV_NO_TURNSTILE)
+  return new Promise((resolve, reject) => {
+    const render = () => {
+      const box = document.createElement('div');
+      box.className = 'turnstile';
+      document.body.appendChild(box);
+      const ts = (window as unknown as { turnstile: { render: (el: HTMLElement, o: object) => void } }).turnstile;
+      ts.render(box, {
+        sitekey: TURNSTILE_SITEKEY,
+        callback: (t: string) => { box.remove(); resolve(t); },
+        'error-callback': () => { box.remove(); reject(new Error('challenge failed')); },
+      });
+    };
+    if ((window as unknown as { turnstile?: unknown }).turnstile) return render();
+    const s = document.createElement('script');
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+    s.async = true;
+    s.onload = render;
+    s.onerror = () => reject(new Error('could not load the challenge'));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureRelaySession(): Promise<boolean> {
+  if (relaySession && relaySession.expires - Date.now() / 1000 > 120) return true;
+  try {
+    const turnstile = await turnstileToken();
+    const r = await fetch(`${RELAY_URL}/session`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ turnstile }),
+    });
+    if (!r.ok) throw new Error(`relay: HTTP ${r.status}`);
+    relaySession = await r.json();
+    // renew a little before it runs out
+    setTimeout(async () => {
+      relaySession = null;
+      if (netPrefs.mode === 'relay' && (await ensureRelaySession())) send({ type: 'net', net: netConfig() });
+    }, Math.max(60, relaySession!.expires - Date.now() / 1000 - 120) * 1000);
+    return true;
+  } catch (e) {
+    showNet(`relay unavailable (${(e as Error).message})`, true);
+    return false;
+  }
+}
+if (RELAY_URL) (netSel.querySelector('option[value=relay]') as HTMLOptionElement).disabled = false;
+
 function netConfig(): NetConfig {
+  if (netPrefs.mode === 'relay' && RELAY_URL && relaySession) {
+    const t = encodeURIComponent(relaySession.session);
+    return { mode: 'relay', wsUrl: `${RELAY_URL.replace(/^http/, 'ws')}/wisp?session=${t}`, pingUrl: `${RELAY_URL}/ping?session=${t}`,
+      allowed: relaySession.allowed, ports: relaySession.ports };
+  }
   if (netPrefs.mode === 'helper' && netPrefs.helperToken) {
     const base = `127.0.0.1:${netPrefs.helperPort ?? 8787}`;
     const t = encodeURIComponent(netPrefs.helperToken);
@@ -48,9 +108,10 @@ function showNet(text: string, blocked = false) {
   netStatusEl.classList.toggle('blocked', blocked);
 }
 showNet(netPrefs.mode === 'helper' && !netPrefs.helperToken ? 'run xiaonux-net and open its link' : '');
-netSel.addEventListener('change', () => {
+netSel.addEventListener('change', async () => {
   netPrefs.mode = netSel.value as NetPrefs['mode'];
   saveNetPrefs(netPrefs);
+  if (netPrefs.mode === 'relay' && !(await ensureRelaySession())) return;
   if (netPrefs.mode === 'helper' && !netPrefs.helperToken) showNet('run xiaonux-net and open its link');
   else showNet(netPrefs.mode === 'off' ? 'off' : '');
   send({ type: 'net', net: netConfig() });
@@ -99,7 +160,8 @@ function watchPrompts(bytes: Uint8Array) {
   if (/[#$] ?$/.test(tail) && (marks.login !== undefined || marks.restore !== undefined)) mark('prompt');
 }
 
-function boot(forceCold = false) {
+async function boot(forceCold = false) {
+  if (netPrefs.mode === 'relay' && RELAY_URL) await ensureRelaySession();
   bootBtn.disabled = true;
   tBoot = performance.now();
   marks = {};
