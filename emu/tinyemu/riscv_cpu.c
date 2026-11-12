@@ -1633,6 +1633,7 @@ void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
     xn_log_on = 1; xn_nlog = 0; xn_mmio_touched = 0;
     f(s);
     xn_log_on = 0;
+    n = ncyc - s->n_cycles; /* superblocks/loops: what actually ran */
     if (xn_mmio_touched)
         return; /* device side effects can't be replayed: trust the block */
     xn_cpu_save(s, &jit);

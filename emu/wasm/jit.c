@@ -494,9 +494,10 @@ static int decode16(uint32_t x, Insn *d)
     return 0;
 }
 
+/* Superblocks: conditional branches are side exits, only jumps end a block. */
 static int is_terminator(int op)
 {
-    return op == OP_JAL || op == OP_JALR || (op >= OP_BEQ && op <= OP_BGEU);
+    return op == OP_JAL || op == OP_JALR;
 }
 
 /* Decode a block starting at `code` (host pointer) within its page. */
@@ -584,12 +585,15 @@ static void mem(Buf *o, uint8_t op, int align, uint32_t off) { put(o, op); uleb(
 
 typedef struct {
     Buf *o;
-    uint32_t used, dirty;   /* register bitmaps */
+    uint32_t used, dirty;   /* register bitmaps; dirty = every rd in the block */
+    int n;                  /* instructions in the block */
 } Gen;
 
 #define OFF_PC     ((uint32_t)offsetof(RISCVCPUState, pc))
 #define OFF_REG(r) ((uint32_t)(offsetof(RISCVCPUState, reg) + 8 * (r)))
 #define OFF_NCYC   ((uint32_t)offsetof(RISCVCPUState, n_cycles))
+#define OFF_MIP    ((uint32_t)offsetof(RISCVCPUState, mip))
+#define OFF_MIE    ((uint32_t)offsetof(RISCVCPUState, mie))
 #define OFF_TMP    ((uint32_t)offsetof(RISCVCPUState, xn_tmp))
 #define OFF_TLBR   ((uint32_t)offsetof(RISCVCPUState, tlb_read))
 #define OFF_TLBW   ((uint32_t)offsetof(RISCVCPUState, tlb_write))
@@ -604,7 +608,6 @@ static void rset(Gen *g, int r)
 {
     if (r == 0) { op_(g->o, 0x1a /* drop */); return; }
     set(g->o, r);
-    g->dirty |= 1u << r;
 }
 
 static void store_dirty(Gen *g)
@@ -622,13 +625,44 @@ static void set_pc_off(Gen *g, int64_t off)
     get(g->o, L_S); get(g->o, L_PC); i64c(g->o, off); op_(g->o, W_I64_ADD); mem(g->o, W_I64_STORE, 3, OFF_PC);
 }
 
-/* early exit after a helper raised an exception at instruction k of n */
+/* s->n_cycles -= c (instruction counting happens at each exit) */
+static void charge(Gen *g, int c)
+{
+    get(g->o, L_S); get(g->o, L_S); mem(g->o, W_I32_LOAD, 2, OFF_NCYC);
+    i32c(g->o, c); op_(g->o, W_I32_SUB); mem(g->o, W_I32_STORE, 2, OFF_NCYC);
+}
+
+/* early exit after a helper raised an exception at instruction k */
 static void exit_exception(Gen *g, int k, int n)
 {
-    /* refund the instructions that didn't run */
-    get(g->o, L_S); get(g->o, L_S); mem(g->o, W_I32_LOAD, 2, OFF_NCYC);
-    i32c(g->o, n - k); op_(g->o, W_I32_ADD); mem(g->o, W_I32_STORE, 2, OFF_NCYC);
+    (void)n;
+    charge(g, k + 1); /* like the interpreter: the faulting one was fetched */
     i32c(g->o, 1); op_(g->o, W_RETURN);
+}
+
+/* leave the block at instruction k with s->pc = pc0 + target_off */
+static void exit_to(Gen *g, int k, int64_t target_off)
+{
+    charge(g, k + 1);
+    store_dirty(g);
+    set_pc_off(g, target_off);
+    i32c(g->o, 0); op_(g->o, W_RETURN);
+}
+
+/* back edge to the block start at instruction k. `depth` = br depth of the
+   enclosing loop from here. Loops while the budget covers another pass and no
+   interrupt is pending, otherwise exits to the block start. */
+static void back_edge(Gen *g, int k, int depth)
+{
+    Buf *o = g->o;
+    charge(g, k + 1);
+    get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_NCYC); i32c(o, g->n); op_(o, 0x4e /* i32.ge_s */);
+    get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIP); get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIE); op_(o, W_I32_AND);
+    op_(o, W_I32_EQZ); op_(o, W_I32_AND);
+    put(o, W_BR_IF); uleb(o, depth);
+    store_dirty(g);
+    set_pc_off(g, 0);
+    i32c(o, 0); op_(o, W_RETURN);
 }
 
 /* L_A = rs1 + imm; L_E = &tlb[(a >> 12) & (TLB_SIZE-1)] */
@@ -757,28 +791,35 @@ static void gen_alu(Gen *g, const Insn *d)
     rset(g, d->rd);
 }
 
-/* Emit the body of one block function. Returns 0 on success. */
+/* Emit the body of one block function. The body sits in a WASM loop so a
+   branch back to the block start iterates without leaving the function. */
 static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
 {
-    Gen g = { .o = o };
+    Gen g = { .o = o, .n = n };
     int k, r;
     int64_t off = 0;
 
-    for (k = 0; k < n; k++)
+    for (k = 0; k < n; k++) {
         g.used |= (1u << ins[k].rd) | (1u << ins[k].rs1) | (1u << ins[k].rs2);
+        if (ins[k].op < OP_BEQ || ins[k].op > OP_BGEU) {
+            if (ins[k].op < OP_SB || ins[k].op > OP_SD)
+                g.dirty |= 1u << ins[k].rd;
+        }
+    }
     g.used &= ~1u;
+    g.dirty &= ~1u;
 
     /* locals: 34 x i64 (x1..x31, pc, a, v), 1 x i32 (e) */
     uleb(o, 2);
     uleb(o, N_LOCALS_I64); put(o, T_I64);
     uleb(o, 1); put(o, T_I32);
 
-    /* entry: charge the instructions, load pc and used registers */
-    get(o, L_S); get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_NCYC); i32c(o, n); op_(o, W_I32_SUB); mem(o, W_I32_STORE, 2, OFF_NCYC);
+    /* entry: load pc and used registers */
     get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_PC); set(o, L_PC);
     for (r = 1; r < 32; r++)
         if (g.used & (1u << r)) { get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_REG(r)); set(o, r); }
 
+    put(o, 0x03 /* loop */); put(o, T_VOID);
     for (k = 0; k < n; k++) {
         const Insn *d = &ins[k];
         switch (d->op) {
@@ -794,14 +835,16 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
         case OP_JAL:
             /* rd = pc + len; pc = pc + imm */
             if (d->rd) { get(o, L_PC); i64c(o, off + d->len); op_(o, W_I64_ADD); rset(&g, d->rd); }
-            store_dirty(&g);
-            set_pc_off(&g, off + d->imm);
-            i32c(o, 0); op_(o, W_RETURN);
+            if (off + d->imm == 0)
+                back_edge(&g, k, 0);            /* jump to our own start: loop */
+            else
+                exit_to(&g, k, off + d->imm);
             break;
         case OP_JALR:
             /* target first: rd may equal rs1 */
             rget(&g, d->rs1); i64c(o, d->imm); op_(o, W_I64_ADD); i64c(o, ~(int64_t)1); op_(o, W_I64_AND); set(o, L_V);
             if (d->rd) { get(o, L_PC); i64c(o, off + d->len); op_(o, W_I64_ADD); rset(&g, d->rd); }
+            charge(&g, k + 1);
             store_dirty(&g);
             get(o, L_S); get(o, L_V); mem(o, W_I64_STORE, 3, OFF_PC);
             i32c(o, 0); op_(o, W_RETURN);
@@ -809,14 +852,14 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
         case OP_BEQ: case OP_BNE: case OP_BLT: case OP_BGE: case OP_BLTU: case OP_BGEU: {
             static const uint8_t cmp[] = { [OP_BEQ] = W_I64_EQ, [OP_BNE] = W_I64_NE, [OP_BLT] = W_I64_LT_S,
                                           [OP_BGE] = W_I64_GE_S, [OP_BLTU] = W_I64_LT_U, [OP_BGEU] = W_I64_GE_U };
-            store_dirty(&g);
-            get(o, L_S);
-            get(o, L_PC); i64c(o, off + d->imm); op_(o, W_I64_ADD);
-            get(o, L_PC); i64c(o, off + d->len); op_(o, W_I64_ADD);
+            /* taken: side exit (or loop); not taken: carry on */
             rget(&g, d->rs1); rget(&g, d->rs2); op_(o, cmp[d->op]);
-            op_(o, W_SELECT);
-            mem(o, W_I64_STORE, 3, OFF_PC);
-            i32c(o, 0); op_(o, W_RETURN);
+            put(o, W_IF); put(o, T_VOID);
+            if (off + d->imm == 0)
+                back_edge(&g, k, 1);            /* br over the if to the loop */
+            else
+                exit_to(&g, k, off + d->imm);
+            put(o, W_END);
             break;
         }
         default:
@@ -825,7 +868,9 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
         }
         off += d->len;
     }
+    put(o, W_END); /* loop */
     /* fell off the end (page end, unsupported instruction, or max length) */
+    charge(&g, n);
     store_dirty(&g);
     set_pc_off(&g, end_off);
     i32c(o, 0);
