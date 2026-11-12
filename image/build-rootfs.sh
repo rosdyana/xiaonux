@@ -39,7 +39,9 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
 truncate -s "$IMG_SIZE" "$IMG"
 mkfs.ext4 -q -F -L root -b 4096 -d "$ROOT" "$IMG"
 mkdir -p "$REPO/build"
-cp --sparse=always "$IMG" "$REPO/build/rootfs.img"
+rm -f "$REPO/build/rootfs.img"
+# The Mac share cannot punch holes; dd seeks over zero blocks instead.
+dd if="$IMG" of="$REPO/build/rootfs.img" bs=1M conv=sparse status=none
 chown "${SUDO_UID:-0}:${SUDO_GID:-0}" "$REPO/build/rootfs.img"
 du -sh "$ROOT"
 ls -ls "$REPO/build/rootfs.img"

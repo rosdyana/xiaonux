@@ -26,6 +26,10 @@
 #include <stdarg.h>
 #include <string.h>
 #include <inttypes.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <sys/random.h> /* xiaonux: getentropy */
+#endif
 #include <assert.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -679,6 +683,22 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
     
     fdt_end_node(s); /* memory */
 
+    /* xiaonux: keep the firmware (OpenSBI) out of the kernel's memory map.
+       TinyEMU has no PMP, so OpenSBI doesn't add this node itself and
+       Linux would eventually overwrite the M-mode trap handler. */
+    if (kernel_size > 0 && kernel_start > RAM_BASE_ADDR) {
+        fdt_begin_node(s, "reserved-memory");
+        fdt_prop_u32(s, "#address-cells", 2);
+        fdt_prop_u32(s, "#size-cells", 2);
+        fdt_prop(s, "ranges", NULL, 0);
+        fdt_begin_node_num(s, "mmode_resv", RAM_BASE_ADDR);
+        fdt_prop_tab_u64_2(s, "reg", RAM_BASE_ADDR,
+                           kernel_start - RAM_BASE_ADDR);
+        fdt_prop(s, "no-map", NULL, 0);
+        fdt_end_node(s);
+        fdt_end_node(s); /* reserved-memory */
+    }
+
     fdt_begin_node(s, "htif");
     fdt_prop_str(s, "compatible", "ucb,htif0");
     /* xiaonux: tell OpenSBI where the MMIO fromhost/tohost registers are
@@ -758,6 +778,13 @@ static int riscv_build_fdt(RISCVMachine *m, uint8_t *dst,
 
     fdt_begin_node(s, "chosen");
     fdt_prop_str(s, "bootargs", cmd_line ? cmd_line : "");
+    /* xiaonux: the machine has no entropy device, so seed the guest's CRNG
+       from the host. Without it getrandom() blocks and systemd hangs. */
+    {
+        uint8_t seed[64];
+        if (getentropy(seed, sizeof(seed)) == 0)
+            fdt_prop(s, "rng-seed", seed, sizeof(seed));
+    }
     if (kernel_size > 0) {
         fdt_prop_tab_u64(s, "riscv,kernel-start", kernel_start);
         fdt_prop_tab_u64(s, "riscv,kernel-end", kernel_start + kernel_size);

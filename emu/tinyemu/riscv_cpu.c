@@ -1275,6 +1275,19 @@ static void glue(riscv_cpu_interp, MAX_XLEN)(RISCVCPUState *s, int n_cycles)
             abort();
         }
     }
+#ifdef XIAONUX_DEBUG_PC
+    {
+        static uint64_t next;
+        if (s->insn_counter >= next) {
+            next = s->insn_counter + 50000000;
+            fprintf(stderr, "[pc] n=%llu priv=%d pc=%llx mcause=%llx mepc=%llx mtval=%llx mstatus=%llx\n",
+                    (unsigned long long)s->insn_counter, s->priv,
+                    (unsigned long long)s->pc, (unsigned long long)s->mcause,
+                    (unsigned long long)s->mepc, (unsigned long long)s->mtval,
+                    (unsigned long long)s->mstatus);
+        }
+    }
+#endif
 }
 
 /* Note: the value is not accurate when called in riscv_cpu_interp() */
