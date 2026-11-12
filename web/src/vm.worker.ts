@@ -7,6 +7,9 @@ declare const self: DedicatedWorkerGlobalScope;
 
 interface Xemu extends DiskModule {
   disk?: ChunkDisk;
+  _vm_set_snapshot(ptr: number, len: number, rawLen: number): number;
+  _vm_snapshot_save(plen: number): number;
+  _agent_send(ptr: number, len: number): number;
   _vm_run_slice(maxCycles: number, chunkCycles: number): number;
   _console_queue_char(c: number): number;
   _console_resize(): void;
@@ -97,10 +100,87 @@ function wake() {
   }
 }
 
-// boot.json: { cfg: "xiaonux.cfg", disk?: "disk-<sha256>.json" }
-interface BootDesc { cfg: string; disk?: string }
+// boot.json: {
+//   cfg: "xiaonux.cfg",                  cold boot (kernel + disk)
+//   disk: "disk-<sha256>.json",          chunked disk manifest
+//   snapshot?: { file: "snap-<sha256>.br", raw: <bytes>, cfg: "snap.cfg" }
+// }  The snapshot was saved against exactly this disk.
+interface BootDesc {
+  cfg: string;
+  disk?: string;
+  snapshot?: { file: string; raw: number; cfg: string };
+}
 
-async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false) {
+// ----- guest agent (/dev/hvc1) -----
+let agentBuf = '';
+const agentWaiters: { cmd: string; resolve: (ok: boolean) => void }[] = [];
+const agentDecoder = new TextDecoder();
+
+function onAgent(bytes: Uint8Array) {
+  agentBuf += agentDecoder.decode(bytes, { stream: true });
+  let i;
+  while ((i = agentBuf.indexOf('\n')) >= 0) {
+    const line = agentBuf.slice(0, i).trim();
+    agentBuf = agentBuf.slice(i + 1);
+    const [status, cmd] = line.split(' ');
+    const w = agentWaiters.findIndex((x) => x.cmd === cmd);
+    if (w >= 0) agentWaiters.splice(w, 1)[0].resolve(status === 'ok');
+    if (status === 'err') post({ type: 'log', message: `agent: ${line}` });
+  }
+}
+
+function agentCommand(line: string, timeoutMs = 5000): Promise<boolean> {
+  const cmd = line.split(' ')[0];
+  const p = new Promise<boolean>((resolve) => {
+    agentWaiters.push({ cmd, resolve });
+    setTimeout(() => resolve(false), timeoutMs);
+  });
+  const bytes = new TextEncoder().encode(line + '\n');
+  const ptr = vm!._malloc(bytes.length);
+  vm!.HEAPU8.set(bytes, ptr);
+  vm!._agent_send(ptr, bytes.length);
+  vm!._free(ptr);
+  wake();
+  return p;
+}
+
+// After a restore: fresh entropy and the real clock before the user sees a
+// prompt (the snapshot's CRNG state and clock are the same for everyone).
+async function afterRestore() {
+  const seed = crypto.getRandomValues(new Uint8Array(64));
+  const hex = [...seed].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const [okSeed, okTime] = await Promise.all([
+    agentCommand(`seed ${hex}`),
+    agentCommand(`time ${Date.now()}`),
+  ]);
+  if (!okSeed || !okTime) post({ type: 'log', message: `agent: seed ${okSeed} time ${okTime}` });
+  const [cols, rows] = vm!.consoleSize;
+  agentCommand(`size ${cols} ${rows}`);
+  // Ask the shell (waiting at its prompt in the snapshot) for a fresh prompt.
+  input.push(13);
+  drainInput();
+  wake();
+  post({ type: 'restored', ms: Math.round(performance.now() - t0), agentOk: okSeed && okTime });
+}
+
+async function fetchCached(url: string): Promise<Uint8Array> {
+  let cache: Cache | null = null;
+  try {
+    cache = await caches.open('xiaonux-chunks-v1');
+    const hit = await cache.match(url);
+    if (hit) return new Uint8Array(await hit.arrayBuffer());
+  } catch {
+    cache = null;
+  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const b = new Uint8Array(await r.arrayBuffer());
+  post({ type: 'fetch', url, bytes: b.length });
+  cache?.put(url, new Response(b)).catch(() => {});
+  return b;
+}
+
+async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false) {
   t0 = performance.now();
   const bootAbs = new URL(bootUrl, self.location.href);
   const base = new URL('.', bootAbs).href;
@@ -117,14 +197,22 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       outTotal += bytes.length;
       outBytes += bytes.length;
     },
+    onAgent,
     onFetch: (url: string, bytes: number) => post({ type: 'fetch', url, bytes }),
-    onReady: () => {
+    onReady: (restored: number) => {
+      if (restored < 0) {
+        post({ type: 'log', message: 'snapshot does not match this build; cold boot' });
+        post({ type: 'restart-cold' });
+        return;
+      }
       ready = true;
-      post({ type: 'ready', ms: Math.round(performance.now() - t0) });
+      post({ type: 'ready', ms: Math.round(performance.now() - t0), restored: restored === 1 });
       yieldNow();
+      if (restored === 1) afterRestore();
     },
   });
   vm = mod;
+  let cfg = desc.cfg;
   if (desc.disk) {
     disk = await ChunkDisk.load(mod, base, desc.disk, (msg) => post({ type: 'log', message: msg }));
     mod.disk = disk;
@@ -135,14 +223,25 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     }
     post({ type: 'disk', stats: disk.stats });
   }
-  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [base + desc.cfg, ramMb, cmdline, 0]);
+  // The shipped snapshot is only valid with the pristine disk: once the
+  // user has changes, boot normally (Phase 2 step 8 adds user snapshots).
+  if (desc.snapshot && !forceCold && !disk?.hasUserData) {
+    const snap = await fetchCached(base + desc.snapshot.file);
+    const p = mod._malloc(snap.length);
+    mod.HEAPU8.set(snap, p);
+    const rc = mod._vm_set_snapshot(p, snap.length, desc.snapshot.raw);
+    mod._free(p);
+    if (rc === 0) cfg = desc.snapshot.cfg;
+    else post({ type: 'log', message: 'snapshot failed to decode; cold boot' });
+  }
+  mod.ccall('vm_start', null, ['string', 'number', 'string', 'number'], [base + cfg, ramMb, cmdline, 0]);
 }
 
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'start':
-      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly).catch((err) =>
+      start(m.bootUrl, m.ramMb, m.cmdline, m.resetOnly, m.forceCold).catch((err) =>
         post({ type: 'error', message: String(err?.stack ?? err) }),
       );
       break;

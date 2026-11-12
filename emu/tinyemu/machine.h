@@ -194,3 +194,9 @@ BlockDevice *block_device_init_http(const char *url,
                                     int max_cache_size_kb,
                                     void (*start_cb)(void *opaque),
                                     void *start_opaque);
+
+/* xiaonux: guest agent console (/dev/hvc1). Set xn_agent_chardev before
+   virt_machine_init to receive what the agent writes; push data to the
+   agent with virtio_console_write_data(xn_agent_dev, ...). */
+extern CharacterDevice *xn_agent_chardev;
+extern VIRTIODevice *xn_agent_dev;

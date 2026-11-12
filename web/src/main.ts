@@ -55,10 +55,10 @@ function render() {
 function watchPrompts(bytes: Uint8Array) {
   tail = (tail + decoder.decode(bytes, { stream: true })).slice(-200);
   if (/login: ?$/.test(tail)) mark('login');
-  if (/[#$] ?$/.test(tail) && marks.login !== undefined) mark('prompt');
+  if (/[#$] ?$/.test(tail) && (marks.login !== undefined || marks.restore !== undefined)) mark('prompt');
 }
 
-function boot() {
+function boot(forceCold = false) {
   bootBtn.disabled = true;
   tBoot = performance.now();
   marks = {};
@@ -73,7 +73,7 @@ function boot() {
         watchPrompts(m.data);
         break;
       case 'ready':
-        mark('vm');
+        mark(m.restored ? 'restore' : 'vm');
         send({ type: 'resize', cols: term.cols, rows: term.rows });
         break;
       case 'fetch':
@@ -90,6 +90,14 @@ function boot() {
         diskEl.textContent = `disk ${mb(d.bytesNetwork)} MB net · ${mb(d.bytesCache)} MB cached · ${d.overlayClusters * 4} KB changed (${d.overlayBackend})`;
         break;
       }
+      case 'restored':
+        if (!m.agentOk) console.warn('[xiaonux] guest agent did not answer; clock/entropy not refreshed');
+        break;
+      case 'restart-cold':
+        worker?.terminate();
+        worker = null;
+        boot(true);
+        break;
       case 'reset-done':
         console.info('[xiaonux] machine reset: your changes were deleted');
         location.reload();
@@ -103,7 +111,7 @@ function boot() {
         break;
     }
   };
-  send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE });
+  send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, forceCold: forceCold || params.has('cold') });
   term.focus();
 }
 
@@ -114,7 +122,7 @@ term.onData((s) => {
 });
 term.onResize(({ cols, rows }) => send({ type: 'resize', cols, rows }));
 window.addEventListener('resize', () => fit.fit());
-bootBtn.addEventListener('click', boot);
+bootBtn.addEventListener('click', () => boot());
 resetBtn.addEventListener('click', () => {
   if (!confirm('Delete all your files and changes in this machine?')) return;
   resetBtn.disabled = true;

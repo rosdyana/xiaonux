@@ -38,6 +38,7 @@
 #include "virtio.h"
 #include "machine.h"
 #include "list.h"
+#include <brotli/decode.h>
 
 /* xiaonux: worker-oriented front end, derived from TinyEMU's jsemu.c.
    Terminal only (no framebuffer/input devices). The JS side drives the
@@ -48,7 +49,12 @@ extern void console_write(void *opaque, const uint8_t *buf, int len);
 extern void console_get_size(int *pw, int *ph);
 extern void net_recv_packet(EthernetDevice *bs,
                             const uint8_t *buf, int len);
-extern void vm_on_ready(void);
+extern void vm_on_ready(int restored);
+extern void agent_output(const uint8_t *buf, int len);
+
+/* riscv_machine.c */
+int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen);
+int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len);
 
 /* blk_chunk.c */
 BlockDevice *blk_chunk_device(void);
@@ -117,6 +123,81 @@ EMSCRIPTEN_KEEPALIVE void net_set_carrier(BOOL carrier_state)
         net = global_vm->net;
         net->device_set_carrier(net, carrier_state);
     }
+}
+
+/* ---- guest agent channel (/dev/hvc1) ---- */
+static uint8_t agent_fifo[4096];
+static int agent_fifo_len;
+
+static void agent_write(void *opaque, const uint8_t *buf, int len)
+{
+    agent_output(buf, len);
+}
+
+static int agent_read(void *opaque, uint8_t *buf, int len)
+{
+    return 0; /* we push with virtio_console_write_data instead */
+}
+
+static CharacterDevice agent_chardev = {
+    .write_data = agent_write, .read_data = agent_read,
+};
+
+/* called from JS: queue bytes for the agent; returns bytes accepted */
+EMSCRIPTEN_KEEPALIVE int agent_send(const uint8_t *buf, int len)
+{
+    len = min_int(len, sizeof(agent_fifo) - agent_fifo_len);
+    memcpy(agent_fifo + agent_fifo_len, buf, len);
+    agent_fifo_len += len;
+    return len;
+}
+
+static void agent_pump(void)
+{
+    int n;
+    if (agent_fifo_len == 0 || !xn_agent_dev ||
+        !virtio_console_can_write_data(xn_agent_dev))
+        return;
+    n = min_int(agent_fifo_len, virtio_console_get_write_len(xn_agent_dev));
+    if (n <= 0)
+        return;
+    virtio_console_write_data(xn_agent_dev, agent_fifo, n);
+    memmove(agent_fifo, agent_fifo + n, agent_fifo_len - n);
+    agent_fifo_len -= n;
+}
+
+/* ---- snapshots ---- */
+static uint8_t *pending_snapshot;
+static size_t pending_snapshot_len;
+
+/* called from JS before vm_start: a Brotli-compressed snapshot to restore
+   right after the machine is built. Returns 0, or -1 if it won't decode. */
+EMSCRIPTEN_KEEPALIVE int vm_set_snapshot(const uint8_t *buf, int len, int raw_len)
+{
+    size_t out_len = raw_len;
+    uint8_t *out = malloc(raw_len);
+    if (!out)
+        return -1;
+    if (BrotliDecoderDecompress(len, buf, &out_len, out) != BROTLI_DECODER_RESULT_SUCCESS ||
+        out_len != (size_t)raw_len) {
+        free(out);
+        return -1;
+    }
+    pending_snapshot = out;
+    pending_snapshot_len = out_len;
+    return 0;
+}
+
+/* called from JS: save the running machine. Returns a malloc'd buffer
+   (length in *plen) or NULL if busy; JS frees it. */
+EMSCRIPTEN_KEEPALIVE uint8_t *vm_snapshot_save(int *plen)
+{
+    uint8_t *buf;
+    size_t len;
+    if (!global_vm || riscv_machine_snapshot_save(global_vm, &buf, &len) < 0)
+        return NULL;
+    *plen = (int)len;
+    return buf;
 }
 
 static CharacterDevice *console_init(void)
@@ -211,6 +292,7 @@ static void init_vm(void *arg)
         p->tab_eth[0].net = net;
     }
 
+    xn_agent_chardev = &agent_chardev;
     m = virt_machine_init(p);
     global_vm = m;
     virt_machine_free_config(s->p);
@@ -219,7 +301,16 @@ static void init_vm(void *arg)
     free(s->p);
     free(s->cmdline);
     free(s);
-    vm_on_ready();
+    {
+        int restored = 0;
+        if (pending_snapshot) {
+            restored = riscv_machine_snapshot_load(m, pending_snapshot,
+                                                   pending_snapshot_len) == 0 ? 1 : -1;
+            free(pending_snapshot);
+            pending_snapshot = NULL;
+        }
+        vm_on_ready(restored);
+    }
 }
 
 #define MAX_SLEEP_TIME 10 /* ms */
@@ -250,6 +341,7 @@ EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
             console_resize_pending = FALSE;
         }
     }
+    agent_pump();
     done = 0;
     for(;;) {
         delay = virt_machine_get_sleep_duration(m, MAX_SLEEP_TIME);

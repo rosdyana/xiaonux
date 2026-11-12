@@ -33,8 +33,13 @@ addToLibrary({
     HEAPU32[ph >> 2] = r[1];
   },
 
-  vm_on_ready: function () {
-    if (Module.onReady) Module.onReady();
+  vm_on_ready: function (restored) {
+    // restored: 0 = cold boot, 1 = snapshot restored, -1 = snapshot rejected
+    if (Module.onReady) Module.onReady(restored);
+  },
+
+  agent_output: function (buf, len) {
+    if (Module.onAgent) Module.onAgent(HEAPU8.slice(buf, buf + len));
   },
 
   net_recv_packet: function (bs, buf, len) {

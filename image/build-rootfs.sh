@@ -17,7 +17,7 @@ IMG="$XBUILD/rootfs.img"
 rm -rf "$ROOT" "$IMG"
 mkdir -p "$ROOT"
 
-PKGS=systemd-sysv,udev,iproute2,iputils-ping,ca-certificates,curl,python3,python3-pip,nano,less
+PKGS=systemd-sysv,udev,iproute2,iputils-ping,ca-certificates,curl,python3,python3-pip,nano,less,procps
 
 mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --dpkgopt='path-exclude=/usr/share/man/*' \
@@ -32,6 +32,9 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --customize-hook='echo "root:'"$ROOT_PASSWORD"'" | chroot "$1" chpasswd' \
   --customize-hook='printf "[global]\nbreak-system-packages = true\n" > "$1/etc/pip.conf"' \
   --customize-hook='chroot "$1" systemctl enable serial-getty@hvc0.service' \
+  --customize-hook="copy-in $REPO/image/guest/xiaonux-agent /usr/local/sbin" \
+  --customize-hook="copy-in $REPO/image/guest/xiaonux-agent.service /etc/systemd/system" \
+  --customize-hook='chroot "$1" systemctl enable xiaonux-agent.service' \
   --customize-hook='chroot "$1" systemctl mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer e2scrub_all.timer fstrim.timer 2>/dev/null || true' \
   --customize-hook='rm -rf "$1"/var/cache/apt/*.bin "$1"/var/lib/apt/lists/* "$1"/var/log/*.log' \
   "$DEBIAN_SUITE" "$ROOT" http://deb.debian.org/debian

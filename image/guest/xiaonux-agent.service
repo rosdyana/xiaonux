@@ -1,0 +1,13 @@
+[Unit]
+Description=xiaonux guest agent (host commands on /dev/hvc1)
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=serial-getty@hvc0.service
+
+[Service]
+ExecStart=/usr/local/sbin/xiaonux-agent
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

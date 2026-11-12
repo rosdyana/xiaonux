@@ -883,6 +883,16 @@ static void riscv_flush_tlb_write_range(void *opaque, uint8_t *ram_addr,
     riscv_cpu_flush_tlb_write_range_ram(s->cpu_state, ram_addr, ram_size);
 }
 
+/* xiaonux: guest agent channel (see riscv_machine_init) */
+CharacterDevice *xn_agent_chardev;
+VIRTIODevice *xn_agent_dev;
+
+static void xn_null_write(void *opaque, const uint8_t *buf, int len) {}
+static int xn_null_read(void *opaque, uint8_t *buf, int len) { return 0; }
+static CharacterDevice xn_null_chardev = {
+    .write_data = xn_null_write, .read_data = xn_null_read,
+};
+
 static void riscv_machine_set_defaults(VirtMachineParams *p)
 {
 }
@@ -953,6 +963,15 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     if (p->console) {
         vbus->irq = &s->plic_irq[irq_num];
         s->common.console_dev = virtio_console_init(vbus, p->console);
+        vbus->addr += VIRTIO_SIZE;
+        irq_num++;
+        s->virtio_count++;
+
+        /* xiaonux: second console (/dev/hvc1) for the guest agent. Always
+           present so native-made snapshots match the browser build. */
+        vbus->irq = &s->plic_irq[irq_num];
+        xn_agent_dev = virtio_console_init(vbus, xn_agent_chardev ?
+                                           xn_agent_chardev : &xn_null_chardev);
         vbus->addr += VIRTIO_SIZE;
         irq_num++;
         s->virtio_count++;
