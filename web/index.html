@@ -6,24 +6,25 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Real Debian Linux running in your browser tab. Nothing to install. For learning Unix and inspecting files safely." />
     <title>xiaonux — Debian Linux in your browser</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4f91'/%3E%3Cpath d='M8 11l6 5-6 5M16 22h8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23e3a43b'/%3E%3Cpath d='M8 11l6 5-6 5M16 22h8' stroke='%231b1306' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   </head>
   <body>
     <!-- Start view: the cover, then the document sections -->
     <section id="start" class="start" aria-labelledby="start-title">
       <div class="start-inner">
+        <header class="start-head">
+          <a class="wordmark" href="./" data-home><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M8 11l6 5-6 5M16 22h8"/></svg><span class="name">xiaonux</span></a>
+          <nav class="start-nav" aria-label="Project" data-i18n-aria-label="nav.project">
+            <a class="nav-anchor" href="#inside" data-i18n="nav.inside">What's inside</a>
+            <a class="nav-anchor" href="#uses" data-i18n="nav.uses">Use cases</a>
+            <a class="nav-anchor" href="#safety" data-i18n="nav.safety">Safety</a>
+            <a class="nav-anchor" href="#services" data-i18n="nav.services">Services</a>
+            <a href="https://github.com/rosdyana/xiaonux">GitHub</a>
+            <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="nav.safe">Is it safe?</a>
+            <select class="lang" data-lang-picker aria-label="Language" data-i18n-aria-label="lang.label"></select>
+          </nav>
+        </header>
         <div class="cover">
-          <header class="start-head">
-            <a class="wordmark" href="./" data-home>xiaonux</a>
-            <nav class="start-nav" aria-label="Project" data-i18n-aria-label="nav.project">
-              <a class="nav-anchor" href="#inside" data-i18n="nav.inside">What's inside</a>
-              <a class="nav-anchor" href="#uses" data-i18n="nav.uses">Use cases</a>
-              <a class="nav-anchor" href="#safety" data-i18n="nav.safety">Safety</a>
-              <a href="https://github.com/rosdyana/xiaonux">GitHub</a>
-              <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="nav.safe">Is it safe?</a>
-              <select class="lang" data-lang-picker aria-label="Language" data-i18n-aria-label="lang.label"></select>
-            </nav>
-          </header>
 
           <div class="start-main">
             <div class="start-lede">
@@ -63,7 +64,7 @@
             </div>
           </div>
 
-          <dl class="fields" aria-label="About this machine" data-i18n-aria-label="fields.label">
+          <dl class="fields facts-bar" aria-label="About this machine" data-i18n-aria-label="fields.label">
             <div><dt data-i18n="fields.machine.k">Machine</dt><dd data-i18n="fields.machine.v">Debian 13, riscv64</dd></div>
             <div><dt data-i18n="fields.runs.k">Runs on</dt><dd data-i18n="fields.runs.v">Your computer, in this tab</dd></div>
             <div><dt data-i18n="fields.net.k">Internet</dt><dd data-i18n="fields.net.v">Off until you choose</dd></div>
@@ -253,6 +254,26 @@
             </div>
           </section>
 
+          <section class="doc-sec svc-sec" id="services" aria-labelledby="services-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="services-title" data-i18n="svc.title">Your own xiaonux</h2>
+              <p class="doc-sec-note" data-i18n="svc.note">For schools, course authors and security teams who want this machine set up for them.</p>
+            </div>
+            <div class="doc-sec-body">
+              <p class="svc-lead" data-i18n="svc.lead">The machine on this page is free and stays free. When you need it shaped around your course or your team, we can build and run it with you.</p>
+              <ul class="offers">
+                <li class="offer-tile"><h3 data-i18n="svc.image.title">Custom Debian images</h3><p data-i18n="svc.image.desc">Your packages, datasets, course files and settings, built into the image, so every student starts from the same machine.</p></li>
+                <li class="offer-tile"><h3 data-i18n="svc.host.title">Self-hosting and embedding</h3><p data-i18n="svc.host.desc">Run it on your own domain, or put it inside a course site or LMS page with your own guides beside the terminal.</p></li>
+                <li class="offer-tile"><h3 data-i18n="svc.train.title">Workshops and training</h3><p data-i18n="svc.train.desc">Hands-on Unix and security-lab sessions for classes and teams. Nobody installs anything.</p></li>
+                <li class="offer-tile"><h3 data-i18n="svc.support.title">Support and consulting</h3><p data-i18n="svc.support.desc">Custom features, guide writing, and help setting up a security lab for your learners.</p></li>
+              </ul>
+              <div class="svc-cta">
+                <a class="btn btn-primary btn-large" href="mailto:contact@xiaonux.dev?subject=xiaonux%20services" data-i18n="svc.cta">Email contact@xiaonux.dev</a>
+                <p data-i18n="svc.ask">Tell us what you teach or test, and who it is for.</p>
+              </div>
+            </div>
+          </section>
+
           <section class="doc-sec" id="source" aria-labelledby="source-title">
             <div class="doc-sec-label">
               <h2 class="doc-sec-title" id="source-title" data-i18n="oss.title">Open source</h2>
@@ -305,7 +326,8 @@
       </header>
 
       <div class="work">
-        <main id="term-wrap" class="term-wrap">
+        <main id="term-wrap" class="term-wrap tile">
+          <div class="tile-head" aria-hidden="true"><b>terminal</b><span>bash · Debian 13 · riscv64</span><kbd class="key-chip">Ctrl+Shift+G</kbd></div>
           <div id="term"></div>
           <div id="drop" class="drop" hidden><p data-i18n-html="drop">Drop to upload into <code>/root/uploads</code></p></div>
           <div id="transfer" class="transfer" role="status" aria-live="polite" hidden>
@@ -314,9 +336,10 @@
           </div>
         </main>
 
-        <aside id="drawer" class="drawer" aria-label="Worksheet" data-i18n-aria-label="drawer.label">
+        <aside id="drawer" class="drawer" aria-label="Guide" data-i18n-aria-label="drawer.label">
+          <div class="drawer-tile tile">
           <div class="drawer-head">
-          <div class="tabs" role="tablist" aria-label="Worksheet sections" data-i18n-aria-label="tabs.label">
+          <div class="tabs" role="tablist" aria-label="Guide sections" data-i18n-aria-label="tabs.label">
             <button role="tab" id="tab-guides" aria-controls="panel-guides" aria-selected="true" data-i18n="tab.guides">Guides</button>
             <button role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" tabindex="-1" data-i18n="tab.network">Network</button>
             <button role="tab" id="tab-safety" aria-controls="panel-safety" aria-selected="false" tabindex="-1" data-i18n="tab.safety">Safety</button>
@@ -329,10 +352,11 @@
               <span data-i18n="guides.field">Guide</span>
               <select id="lesson-select"></select>
             </label>
-            <p data-i18n-html="guides.login">If the machine asks you to log in, the user is <code>root</code> and the password is <code>root</code>.</p>
-            <p class="hint" data-i18n-html="guides.hint">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> to move between the terminal and this guide.</p>
+            <div id="lesson-progress" class="seg" aria-hidden="true"></div>
             <p id="lesson-intro" class="lesson-intro"></p>
             <ol id="lesson-steps" class="steps"></ol>
+            <p class="after-steps" data-i18n-html="guides.login">If the machine asks you to log in, the user is <code>root</code> and the password is <code>root</code>.</p>
+            <p class="hint" data-i18n-html="guides.hint">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> to move between the terminal and this guide.</p>
           </section>
 
           <section id="panel-network" class="panel" role="tabpanel" aria-labelledby="tab-network" hidden>
@@ -387,6 +411,17 @@
               <li>Don't put passwords or secrets in the machine. Follow the law and your course's rules.</li>
             </ul>
             <p>Uploads land in <code>/root/uploads</code> and are never marked executable. <b>Reset</b> deletes everything.</p>
+          </section>
+          </div>
+
+          <section id="svc-tile" class="svc-tile tile" aria-labelledby="svc-tile-title">
+            <div class="tile-head"><b data-i18n="svc.tile">services</b><span id="svc-tile-title" data-i18n="svc.title">Your own xiaonux</span>
+              <button id="svc-hide" class="tile-x" type="button" title="Hide" data-i18n-title="svc.hide" aria-label="Hide" data-i18n-aria-label="svc.hide"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
+            </div>
+            <div class="svc-body">
+              <p data-i18n="svc.short">Custom images, self-hosting, workshops and support for your course or team.</p>
+              <div class="svc-row"><code>contact@xiaonux.dev</code><a class="btn btn-primary btn-small" href="mailto:contact@xiaonux.dev?subject=xiaonux%20services" data-i18n="svc.contact">Contact</a></div>
+            </div>
           </section>
         </aside>
       </div>

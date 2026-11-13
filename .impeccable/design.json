@@ -1,702 +1,853 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-13T02:52:00.131Z",
+  "generatedAt": "2026-11-13T21:15:00+00:00",
   "title": "Design System: xiaonux",
   "extensions": {
     "colorMeta": {
-      "paper": {
+      "ground": {
         "role": "neutral",
-        "displayName": "Bond Paper",
-        "canonical": "#f6f8fb",
-        "oklch": "oklch(97.8% 0.005 258.3)",
+        "displayName": "Sand Ground",
+        "canonical": "#e6dfcf",
+        "oklch": "oklch(90.5% 0.023 87.2)",
         "mode": "light",
-        "cssVar": "--paper",
+        "cssVar": "--ground",
         "tonalRamp": [
-          "oklch(15% 0.002 258.3)",
-          "oklch(27% 0.003 258.3)",
-          "oklch(39% 0.003 258.3)",
-          "oklch(51% 0.004 258.3)",
-          "oklch(63% 0.004 258.3)",
-          "oklch(75% 0.003 258.3)",
-          "oklch(86% 0.002 258.3)",
-          "oklch(95% 0.002 258.3)"
+          "oklch(15% 0.009 87.2)",
+          "oklch(26% 0.016 87.2)",
+          "oklch(38% 0.020 87.2)",
+          "oklch(49% 0.022 87.2)",
+          "oklch(61% 0.022 87.2)",
+          "oklch(72% 0.020 87.2)",
+          "oklch(84% 0.016 87.2)",
+          "oklch(95% 0.009 87.2)"
         ]
       },
-      "sheet": {
+      "tile": {
         "role": "neutral",
-        "displayName": "Sheet",
-        "canonical": "#fdfeff",
-        "oklch": "oklch(99.7% 0.002 247.8)",
+        "displayName": "Paper Tile",
+        "canonical": "#f7f3ea",
+        "oklch": "oklch(96.5% 0.013 86.8)",
         "mode": "light",
-        "cssVar": "--sheet",
+        "cssVar": "--tile",
         "tonalRamp": [
-          "oklch(15% 0.001 247.8)",
-          "oklch(27% 0.001 247.8)",
-          "oklch(39% 0.001 247.8)",
-          "oklch(51% 0.002 247.8)",
-          "oklch(63% 0.001 247.8)",
-          "oklch(75% 0.001 247.8)",
-          "oklch(86% 0.001 247.8)",
-          "oklch(95% 0.001 247.8)"
+          "oklch(15% 0.005 86.8)",
+          "oklch(26% 0.009 86.8)",
+          "oklch(38% 0.011 86.8)",
+          "oklch(49% 0.013 86.8)",
+          "oklch(61% 0.013 86.8)",
+          "oklch(72% 0.011 86.8)",
+          "oklch(84% 0.009 86.8)",
+          "oklch(95% 0.005 86.8)"
+        ]
+      },
+      "tile-2": {
+        "role": "neutral",
+        "displayName": "Tile Inset",
+        "canonical": "#eee7d8",
+        "oklch": "oklch(92.9% 0.021 85.9)",
+        "mode": "light",
+        "cssVar": "--tile-2",
+        "tonalRamp": [
+          "oklch(15% 0.009 85.9)",
+          "oklch(26% 0.015 85.9)",
+          "oklch(38% 0.019 85.9)",
+          "oklch(49% 0.021 85.9)",
+          "oklch(61% 0.021 85.9)",
+          "oklch(72% 0.019 85.9)",
+          "oklch(84% 0.015 85.9)",
+          "oklch(95% 0.009 85.9)"
+        ]
+      },
+      "term": {
+        "role": "neutral",
+        "displayName": "Terminal Paper",
+        "canonical": "#fbf8f0",
+        "oklch": "oklch(97.9% 0.011 89.7)",
+        "mode": "light",
+        "cssVar": "--term",
+        "tonalRamp": [
+          "oklch(15% 0.004 89.7)",
+          "oklch(26% 0.008 89.7)",
+          "oklch(38% 0.010 89.7)",
+          "oklch(49% 0.011 89.7)",
+          "oklch(61% 0.011 89.7)",
+          "oklch(72% 0.010 89.7)",
+          "oklch(84% 0.008 89.7)",
+          "oklch(95% 0.004 89.7)"
         ]
       },
       "ink": {
         "role": "neutral",
-        "displayName": "Graphite",
-        "canonical": "#1b2430",
-        "oklch": "oklch(25.7% 0.026 255.8)",
+        "displayName": "Teal Ink",
+        "canonical": "#1d3036",
+        "oklch": "oklch(29.6% 0.027 219.7)",
         "mode": "light",
         "cssVar": "--ink",
         "tonalRamp": [
-          "oklch(15% 0.01 255.8)",
-          "oklch(27% 0.015 255.8)",
-          "oklch(39% 0.02 255.8)",
-          "oklch(51% 0.025 255.8)",
-          "oklch(63% 0.023 255.8)",
-          "oklch(75% 0.018 255.8)",
-          "oklch(86% 0.014 255.8)",
-          "oklch(95% 0.01 255.8)"
+          "oklch(15% 0.011 219.7)",
+          "oklch(26% 0.019 219.7)",
+          "oklch(38% 0.024 219.7)",
+          "oklch(49% 0.027 219.7)",
+          "oklch(61% 0.027 219.7)",
+          "oklch(72% 0.024 219.7)",
+          "oklch(84% 0.019 219.7)",
+          "oklch(95% 0.011 219.7)"
         ]
       },
       "ink-2": {
         "role": "neutral",
-        "displayName": "Soft Graphite",
-        "canonical": "#4c5866",
-        "oklch": "oklch(45.5% 0.027 252.4)",
+        "displayName": "Soft Teal Ink",
+        "canonical": "#4c5d61",
+        "oklch": "oklch(46.6% 0.022 213.6)",
         "mode": "light",
         "cssVar": "--ink-2",
         "tonalRamp": [
-          "oklch(15% 0.01 252.4)",
-          "oklch(27% 0.016 252.4)",
-          "oklch(39% 0.021 252.4)",
-          "oklch(51% 0.026 252.4)",
-          "oklch(63% 0.024 252.4)",
-          "oklch(75% 0.019 252.4)",
-          "oklch(86% 0.014 252.4)",
-          "oklch(95% 0.01 252.4)"
+          "oklch(15% 0.009 213.6)",
+          "oklch(26% 0.015 213.6)",
+          "oklch(38% 0.019 213.6)",
+          "oklch(49% 0.022 213.6)",
+          "oklch(61% 0.022 213.6)",
+          "oklch(72% 0.019 213.6)",
+          "oklch(84% 0.015 213.6)",
+          "oklch(95% 0.009 213.6)"
         ]
       },
-      "rule": {
+      "line": {
         "role": "neutral",
-        "displayName": "Blue Ruling",
-        "canonical": "#d3e0f0",
-        "oklch": "oklch(90.2% 0.026 253.6)",
+        "displayName": "Line",
+        "canonical": "#d2c8b2",
+        "oklch": "oklch(83.5% 0.032 86.5)",
         "mode": "light",
-        "cssVar": "--rule",
+        "cssVar": "--line",
         "tonalRamp": [
-          "oklch(15% 0.01 253.6)",
-          "oklch(27% 0.015 253.6)",
-          "oklch(39% 0.02 253.6)",
-          "oklch(51% 0.024 253.6)",
-          "oklch(63% 0.023 253.6)",
-          "oklch(75% 0.018 253.6)",
-          "oklch(86% 0.014 253.6)",
-          "oklch(95% 0.01 253.6)"
+          "oklch(15% 0.013 86.5)",
+          "oklch(26% 0.022 86.5)",
+          "oklch(38% 0.028 86.5)",
+          "oklch(49% 0.031 86.5)",
+          "oklch(61% 0.031 86.5)",
+          "oklch(72% 0.028 86.5)",
+          "oklch(84% 0.022 86.5)",
+          "oklch(95% 0.013 86.5)"
         ]
       },
-      "rule-strong": {
+      "line-strong": {
         "role": "neutral",
-        "displayName": "Strong Ruling",
-        "canonical": "#b3c8e4",
-        "oklch": "oklch(82.6% 0.046 255.6)",
+        "displayName": "Strong Line",
+        "canonical": "#ad9f80",
+        "oklch": "oklch(70.6% 0.046 86.6)",
         "mode": "light",
-        "cssVar": "--rule-strong",
+        "cssVar": "--line-strong",
         "tonalRamp": [
-          "oklch(15% 0.017 255.6)",
-          "oklch(27% 0.026 255.6)",
-          "oklch(39% 0.034 255.6)",
-          "oklch(51% 0.043 255.6)",
-          "oklch(63% 0.04 255.6)",
-          "oklch(75% 0.032 255.6)",
-          "oklch(86% 0.024 255.6)",
-          "oklch(95% 0.017 255.6)"
+          "oklch(15% 0.018 86.6)",
+          "oklch(26% 0.032 86.6)",
+          "oklch(38% 0.041 86.6)",
+          "oklch(49% 0.046 86.6)",
+          "oklch(61% 0.046 86.6)",
+          "oklch(72% 0.041 86.6)",
+          "oklch(84% 0.032 86.6)",
+          "oklch(95% 0.018 86.6)"
         ]
       },
-      "blue": {
+      "accent": {
         "role": "primary",
-        "displayName": "Cover-Stock Blue",
-        "canonical": "#1d4f91",
-        "oklch": "oklch(43.1% 0.121 256.8)",
-        "mode": "light",
-        "cssVar": "--blue",
+        "displayName": "Workstation Ochre",
+        "canonical": "#e3a43b",
+        "oklch": "oklch(76.1% 0.138 76.2)",
+        "mode": "both",
+        "cssVar": "--accent",
         "tonalRamp": [
-          "oklch(15% 0.046 256.8)",
-          "oklch(27% 0.069 256.8)",
-          "oklch(39% 0.091 256.8)",
-          "oklch(51% 0.114 256.8)",
-          "oklch(63% 0.106 256.8)",
-          "oklch(75% 0.084 256.8)",
-          "oklch(86% 0.063 256.8)",
-          "oklch(95% 0.046 256.8)"
+          "oklch(15% 0.055 76.2)",
+          "oklch(26% 0.096 76.2)",
+          "oklch(38% 0.123 76.2)",
+          "oklch(49% 0.137 76.2)",
+          "oklch(61% 0.137 76.2)",
+          "oklch(72% 0.123 76.2)",
+          "oklch(84% 0.096 76.2)",
+          "oklch(95% 0.055 76.2)"
         ]
       },
-      "blue-hover": {
+      "accent-hover": {
         "role": "primary",
-        "displayName": "Cover-Stock Blue, Hover",
-        "canonical": "#163f75",
-        "oklch": "oklch(37.1% 0.103 256.7)",
+        "displayName": "Ochre Lifted",
+        "canonical": "#eeb24c",
+        "oklch": "oklch(80.1% 0.136 77.7)",
         "mode": "light",
-        "cssVar": "--blue-hover",
+        "cssVar": "--accent-hover",
         "tonalRamp": [
-          "oklch(15% 0.039 256.7)",
-          "oklch(27% 0.059 256.7)",
-          "oklch(39% 0.078 256.7)",
-          "oklch(51% 0.097 256.7)",
-          "oklch(63% 0.09 256.7)",
-          "oklch(75% 0.071 256.7)",
-          "oklch(86% 0.054 256.7)",
-          "oklch(95% 0.039 256.7)"
+          "oklch(15% 0.054 77.7)",
+          "oklch(26% 0.094 77.7)",
+          "oklch(38% 0.121 77.7)",
+          "oklch(49% 0.134 77.7)",
+          "oklch(61% 0.134 77.7)",
+          "oklch(72% 0.121 77.7)",
+          "oklch(84% 0.094 77.7)",
+          "oklch(95% 0.054 77.7)"
         ]
       },
-      "blue-wash": {
+      "on-accent": {
         "role": "primary",
-        "displayName": "Blue Wash",
-        "canonical": "#e6eef9",
-        "oklch": "oklch(94.6% 0.017 256.3)",
-        "mode": "light",
-        "cssVar": "--blue-wash",
+        "displayName": "On Ochre",
+        "canonical": "#1b1306",
+        "oklch": "oklch(19.3% 0.027 79.3)",
+        "mode": "both",
+        "cssVar": "--on-accent",
         "tonalRamp": [
-          "oklch(15% 0.007 256.3)",
-          "oklch(27% 0.01 256.3)",
-          "oklch(39% 0.013 256.3)",
-          "oklch(51% 0.016 256.3)",
-          "oklch(63% 0.015 256.3)",
-          "oklch(75% 0.012 256.3)",
-          "oklch(86% 0.009 256.3)",
-          "oklch(95% 0.007 256.3)"
+          "oklch(15% 0.011 79.3)",
+          "oklch(26% 0.019 79.3)",
+          "oklch(38% 0.024 79.3)",
+          "oklch(49% 0.027 79.3)",
+          "oklch(61% 0.027 79.3)",
+          "oklch(72% 0.024 79.3)",
+          "oklch(84% 0.019 79.3)",
+          "oklch(95% 0.011 79.3)"
         ]
       },
-      "on-blue": {
+      "link": {
         "role": "primary",
-        "displayName": "On Blue",
-        "canonical": "#ffffff",
-        "oklch": "oklch(100% 0 89.9)",
+        "displayName": "Ochre Ink",
+        "canonical": "#855000",
+        "oklch": "oklch(48.1% 0.106 67.1)",
         "mode": "light",
-        "cssVar": "--on-blue",
+        "cssVar": "--link",
         "tonalRamp": [
-          "oklch(15% 0 89.9)",
-          "oklch(27% 0 89.9)",
-          "oklch(39% 0 89.9)",
-          "oklch(51% 0 89.9)",
-          "oklch(63% 0 89.9)",
-          "oklch(75% 0 89.9)",
-          "oklch(86% 0 89.9)",
-          "oklch(95% 0 89.9)"
+          "oklch(15% 0.043 67.1)",
+          "oklch(26% 0.074 67.1)",
+          "oklch(38% 0.095 67.1)",
+          "oklch(49% 0.105 67.1)",
+          "oklch(61% 0.105 67.1)",
+          "oklch(72% 0.095 67.1)",
+          "oklch(84% 0.074 67.1)",
+          "oklch(95% 0.043 67.1)"
         ]
       },
-      "bar": {
+      "accent-wash": {
         "role": "primary",
-        "displayName": "Shell Binding",
-        "canonical": "#1d4f91",
-        "oklch": "oklch(43.1% 0.121 256.8)",
+        "displayName": "Ochre Wash",
+        "canonical": "#f5e3bd",
+        "oklch": "oklch(92.1% 0.053 85.6)",
         "mode": "light",
-        "cssVar": "--bar",
+        "cssVar": "--accent-wash",
         "tonalRamp": [
-          "oklch(15% 0.046 256.8)",
-          "oklch(27% 0.069 256.8)",
-          "oklch(39% 0.091 256.8)",
-          "oklch(51% 0.114 256.8)",
-          "oklch(63% 0.106 256.8)",
-          "oklch(75% 0.084 256.8)",
-          "oklch(86% 0.063 256.8)",
-          "oklch(95% 0.046 256.8)"
-        ]
-      },
-      "bar-ink": {
-        "role": "primary",
-        "displayName": "Bar Ink",
-        "canonical": "#e8f0fb",
-        "oklch": "oklch(95.2% 0.017 256.3)",
-        "mode": "light",
-        "cssVar": "--bar-ink",
-        "tonalRamp": [
-          "oklch(15% 0.007 256.3)",
-          "oklch(27% 0.01 256.3)",
-          "oklch(39% 0.013 256.3)",
-          "oklch(51% 0.016 256.3)",
-          "oklch(63% 0.015 256.3)",
-          "oklch(75% 0.012 256.3)",
-          "oklch(86% 0.009 256.3)",
-          "oklch(95% 0.007 256.3)"
-        ]
-      },
-      "bar-ink-2": {
-        "role": "primary",
-        "displayName": "Bar Ink, Secondary",
-        "canonical": "#b7cbe6",
-        "oklch": "oklch(83.6% 0.044 255.9)",
-        "mode": "light",
-        "cssVar": "--bar-ink-2",
-        "tonalRamp": [
-          "oklch(15% 0.017 255.9)",
-          "oklch(27% 0.025 255.9)",
-          "oklch(39% 0.033 255.9)",
-          "oklch(51% 0.041 255.9)",
-          "oklch(63% 0.038 255.9)",
-          "oklch(75% 0.03 255.9)",
-          "oklch(86% 0.023 255.9)",
-          "oklch(95% 0.017 255.9)"
-        ]
-      },
-      "pen": {
-        "role": "secondary",
-        "displayName": "Teacher's Red Pen",
-        "canonical": "#c8302b",
-        "oklch": "oklch(54.9% 0.189 27.5)",
-        "mode": "light",
-        "cssVar": "--pen",
-        "tonalRamp": [
-          "oklch(15% 0.072 27.5)",
-          "oklch(27% 0.107 27.5)",
-          "oklch(39% 0.143 27.5)",
-          "oklch(51% 0.178 27.5)",
-          "oklch(63% 0.166 27.5)",
-          "oklch(75% 0.131 27.5)",
-          "oklch(86% 0.099 27.5)",
-          "oklch(95% 0.072 27.5)"
-        ]
-      },
-      "margin": {
-        "role": "tertiary",
-        "displayName": "Printed Margin",
-        "canonical": "#efb9c0",
-        "oklch": "oklch(83.6% 0.063 9.8)",
-        "mode": "light",
-        "cssVar": "--margin",
-        "tonalRamp": [
-          "oklch(15% 0.024 9.8)",
-          "oklch(27% 0.036 9.8)",
-          "oklch(39% 0.047 9.8)",
-          "oklch(51% 0.059 9.8)",
-          "oklch(63% 0.055 9.8)",
-          "oklch(75% 0.044 9.8)",
-          "oklch(86% 0.033 9.8)",
-          "oklch(95% 0.024 9.8)"
+          "oklch(15% 0.021 85.6)",
+          "oklch(26% 0.037 85.6)",
+          "oklch(38% 0.048 85.6)",
+          "oklch(49% 0.053 85.6)",
+          "oklch(61% 0.053 85.6)",
+          "oklch(72% 0.048 85.6)",
+          "oklch(84% 0.037 85.6)",
+          "oklch(95% 0.021 85.6)"
         ]
       },
       "ok": {
         "role": "secondary",
-        "displayName": "Done Green",
-        "canonical": "#1d7438",
-        "oklch": "oklch(49.4% 0.123 149.3)",
+        "displayName": "Sage",
+        "canonical": "#3d7a35",
+        "oklch": "oklch(52.2% 0.120 141.4)",
         "mode": "light",
         "cssVar": "--ok",
         "tonalRamp": [
-          "oklch(15% 0.047 149.3)",
-          "oklch(27% 0.07 149.3)",
-          "oklch(39% 0.093 149.3)",
-          "oklch(51% 0.116 149.3)",
-          "oklch(63% 0.108 149.3)",
-          "oklch(75% 0.085 149.3)",
-          "oklch(86% 0.064 149.3)",
-          "oklch(95% 0.047 149.3)"
+          "oklch(15% 0.048 141.4)",
+          "oklch(26% 0.083 141.4)",
+          "oklch(38% 0.107 141.4)",
+          "oklch(49% 0.119 141.4)",
+          "oklch(61% 0.119 141.4)",
+          "oklch(72% 0.107 141.4)",
+          "oklch(84% 0.083 141.4)",
+          "oklch(95% 0.048 141.4)"
         ]
       },
-      "paper-dark": {
-        "role": "neutral",
-        "displayName": "Bond Paper (dark mode)",
-        "canonical": "#0a1018",
-        "oklch": "oklch(17.1% 0.019 255.8)",
-        "mode": "dark",
-        "cssVar": "--paper",
+      "warn": {
+        "role": "tertiary",
+        "displayName": "Amber Warning",
+        "canonical": "#8a5a00",
+        "oklch": "oklch(50.8% 0.108 73.3)",
+        "mode": "light",
+        "cssVar": "--warn",
         "tonalRamp": [
-          "oklch(15% 0.007 255.8)",
-          "oklch(27% 0.011 255.8)",
-          "oklch(39% 0.015 255.8)",
-          "oklch(51% 0.018 255.8)",
-          "oklch(63% 0.017 255.8)",
-          "oklch(75% 0.013 255.8)",
-          "oklch(86% 0.01 255.8)",
-          "oklch(95% 0.007 255.8)"
+          "oklch(15% 0.043 73.3)",
+          "oklch(26% 0.075 73.3)",
+          "oklch(38% 0.096 73.3)",
+          "oklch(49% 0.107 73.3)",
+          "oklch(61% 0.107 73.3)",
+          "oklch(72% 0.096 73.3)",
+          "oklch(84% 0.075 73.3)",
+          "oklch(95% 0.043 73.3)"
         ]
       },
-      "sheet-dark": {
-        "role": "neutral",
-        "displayName": "Sheet (dark mode)",
-        "canonical": "#0c131c",
-        "oklch": "oklch(18.4% 0.021 255)",
-        "mode": "dark",
-        "cssVar": "--sheet",
+      "err": {
+        "role": "secondary",
+        "displayName": "Coral",
+        "canonical": "#b2372a",
+        "oklch": "oklch(51.7% 0.161 29.6)",
+        "mode": "light",
+        "cssVar": "--err",
         "tonalRamp": [
-          "oklch(15% 0.008 255)",
-          "oklch(27% 0.012 255)",
-          "oklch(39% 0.016 255)",
-          "oklch(51% 0.02 255)",
-          "oklch(63% 0.019 255)",
-          "oklch(75% 0.015 255)",
-          "oklch(86% 0.011 255)",
-          "oklch(95% 0.008 255)"
+          "oklch(15% 0.065 29.6)",
+          "oklch(26% 0.112 29.6)",
+          "oklch(38% 0.144 29.6)",
+          "oklch(49% 0.159 29.6)",
+          "oklch(61% 0.159 29.6)",
+          "oklch(72% 0.144 29.6)",
+          "oklch(84% 0.112 29.6)",
+          "oklch(95% 0.065 29.6)"
+        ]
+      },
+      "bar": {
+        "role": "neutral",
+        "displayName": "Status Bar",
+        "canonical": "#0f2328",
+        "oklch": "oklch(24.2% 0.028 215.8)",
+        "mode": "light",
+        "cssVar": "--bar",
+        "tonalRamp": [
+          "oklch(15% 0.011 215.8)",
+          "oklch(26% 0.019 215.8)",
+          "oklch(38% 0.025 215.8)",
+          "oklch(49% 0.027 215.8)",
+          "oklch(61% 0.027 215.8)",
+          "oklch(72% 0.025 215.8)",
+          "oklch(84% 0.019 215.8)",
+          "oklch(95% 0.011 215.8)"
+        ]
+      },
+      "bar-2": {
+        "role": "neutral",
+        "displayName": "Status Bar Raised",
+        "canonical": "#183238",
+        "oklch": "oklch(29.9% 0.034 214.4)",
+        "mode": "light",
+        "cssVar": "--bar-2",
+        "tonalRamp": [
+          "oklch(15% 0.013 214.4)",
+          "oklch(26% 0.023 214.4)",
+          "oklch(38% 0.030 214.4)",
+          "oklch(49% 0.033 214.4)",
+          "oklch(61% 0.033 214.4)",
+          "oklch(72% 0.030 214.4)",
+          "oklch(84% 0.023 214.4)",
+          "oklch(95% 0.013 214.4)"
+        ]
+      },
+      "bar-line": {
+        "role": "neutral",
+        "displayName": "Bar Divider",
+        "canonical": "#2a4a52",
+        "oklch": "oklch(38.8% 0.040 215.5)",
+        "mode": "light",
+        "cssVar": "--bar-line",
+        "tonalRamp": [
+          "oklch(15% 0.016 215.5)",
+          "oklch(26% 0.028 215.5)",
+          "oklch(38% 0.036 215.5)",
+          "oklch(49% 0.040 215.5)",
+          "oklch(61% 0.040 215.5)",
+          "oklch(72% 0.036 215.5)",
+          "oklch(84% 0.028 215.5)",
+          "oklch(95% 0.016 215.5)"
+        ]
+      },
+      "bar-ink": {
+        "role": "neutral",
+        "displayName": "Bar Sand",
+        "canonical": "#e9e2d0",
+        "oklch": "oklch(91.3% 0.025 89.2)",
+        "mode": "both",
+        "cssVar": "--bar-ink",
+        "tonalRamp": [
+          "oklch(15% 0.010 89.2)",
+          "oklch(26% 0.017 89.2)",
+          "oklch(38% 0.022 89.2)",
+          "oklch(49% 0.025 89.2)",
+          "oklch(61% 0.025 89.2)",
+          "oklch(72% 0.022 89.2)",
+          "oklch(84% 0.017 89.2)",
+          "oklch(95% 0.010 89.2)"
+        ]
+      },
+      "bar-ink-2": {
+        "role": "neutral",
+        "displayName": "Bar Readout",
+        "canonical": "#a9b4ad",
+        "oklch": "oklch(75.9% 0.016 158.1)",
+        "mode": "both",
+        "cssVar": "--bar-ink-2",
+        "tonalRamp": [
+          "oklch(15% 0.006 158.1)",
+          "oklch(26% 0.011 158.1)",
+          "oklch(38% 0.014 158.1)",
+          "oklch(49% 0.016 158.1)",
+          "oklch(61% 0.016 158.1)",
+          "oklch(72% 0.014 158.1)",
+          "oklch(84% 0.011 158.1)",
+          "oklch(95% 0.006 158.1)"
+        ]
+      },
+      "ground-dark": {
+        "role": "neutral",
+        "displayName": "Sand Ground (dark)",
+        "canonical": "#0e1f23",
+        "oklch": "oklch(20.6% 0.022 216.8)",
+        "mode": "dark",
+        "cssVar": "--ground",
+        "tonalRamp": [
+          "oklch(15% 0.009 216.8)",
+          "oklch(26% 0.015 216.8)",
+          "oklch(38% 0.020 216.8)",
+          "oklch(49% 0.022 216.8)",
+          "oklch(61% 0.022 216.8)",
+          "oklch(72% 0.020 216.8)",
+          "oklch(84% 0.015 216.8)",
+          "oklch(95% 0.009 216.8)"
+        ]
+      },
+      "tile-dark": {
+        "role": "neutral",
+        "displayName": "Paper Tile (dark)",
+        "canonical": "#183238",
+        "oklch": "oklch(29.1% 0.034 214.5)",
+        "mode": "dark",
+        "cssVar": "--tile",
+        "tonalRamp": [
+          "oklch(15% 0.013 214.5)",
+          "oklch(26% 0.023 214.5)",
+          "oklch(38% 0.030 214.5)",
+          "oklch(49% 0.033 214.5)",
+          "oklch(61% 0.033 214.5)",
+          "oklch(72% 0.030 214.5)",
+          "oklch(84% 0.023 214.5)",
+          "oklch(95% 0.013 214.5)"
+        ]
+      },
+      "tile-2-dark": {
+        "role": "neutral",
+        "displayName": "Tile Inset (dark)",
+        "canonical": "#1d3b42",
+        "oklch": "oklch(33.2% 0.038 214.6)",
+        "mode": "dark",
+        "cssVar": "--tile-2",
+        "tonalRamp": [
+          "oklch(15% 0.015 214.6)",
+          "oklch(26% 0.026 214.6)",
+          "oklch(38% 0.034 214.6)",
+          "oklch(49% 0.037 214.6)",
+          "oklch(61% 0.037 214.6)",
+          "oklch(72% 0.034 214.6)",
+          "oklch(84% 0.026 214.6)",
+          "oklch(95% 0.015 214.6)"
+        ]
+      },
+      "term-dark": {
+        "role": "neutral",
+        "displayName": "Terminal Paper (dark)",
+        "canonical": "#12262b",
+        "oklch": "oklch(25.4% 0.028 215.7)",
+        "mode": "dark",
+        "cssVar": "--term",
+        "tonalRamp": [
+          "oklch(15% 0.011 215.7)",
+          "oklch(26% 0.019 215.7)",
+          "oklch(38% 0.024 215.7)",
+          "oklch(49% 0.027 215.7)",
+          "oklch(61% 0.027 215.7)",
+          "oklch(72% 0.024 215.7)",
+          "oklch(84% 0.019 215.7)",
+          "oklch(95% 0.011 215.7)"
         ]
       },
       "ink-dark": {
         "role": "neutral",
-        "displayName": "Graphite (dark mode)",
-        "canonical": "#dbe3ec",
-        "oklch": "oklch(91.2% 0.015 251.2)",
+        "displayName": "Teal Ink (dark)",
+        "canonical": "#e9e2d0",
+        "oklch": "oklch(91.3% 0.025 89.2)",
         "mode": "dark",
         "cssVar": "--ink",
         "tonalRamp": [
-          "oklch(15% 0.006 251.2)",
-          "oklch(27% 0.009 251.2)",
-          "oklch(39% 0.011 251.2)",
-          "oklch(51% 0.014 251.2)",
-          "oklch(63% 0.013 251.2)",
-          "oklch(75% 0.01 251.2)",
-          "oklch(86% 0.008 251.2)",
-          "oklch(95% 0.006 251.2)"
+          "oklch(15% 0.010 89.2)",
+          "oklch(26% 0.017 89.2)",
+          "oklch(38% 0.022 89.2)",
+          "oklch(49% 0.025 89.2)",
+          "oklch(61% 0.025 89.2)",
+          "oklch(72% 0.022 89.2)",
+          "oklch(84% 0.017 89.2)",
+          "oklch(95% 0.010 89.2)"
         ]
       },
       "ink-2-dark": {
         "role": "neutral",
-        "displayName": "Soft Graphite (dark mode)",
-        "canonical": "#9aa8b8",
-        "oklch": "oklch(72.6% 0.028 251.7)",
+        "displayName": "Soft Teal Ink (dark)",
+        "canonical": "#a9b4ad",
+        "oklch": "oklch(75.9% 0.016 158.1)",
         "mode": "dark",
         "cssVar": "--ink-2",
         "tonalRamp": [
-          "oklch(15% 0.011 251.7)",
-          "oklch(27% 0.016 251.7)",
-          "oklch(39% 0.021 251.7)",
-          "oklch(51% 0.026 251.7)",
-          "oklch(63% 0.025 251.7)",
-          "oklch(75% 0.019 251.7)",
-          "oklch(86% 0.015 251.7)",
-          "oklch(95% 0.011 251.7)"
+          "oklch(15% 0.006 158.1)",
+          "oklch(26% 0.011 158.1)",
+          "oklch(38% 0.014 158.1)",
+          "oklch(49% 0.016 158.1)",
+          "oklch(61% 0.016 158.1)",
+          "oklch(72% 0.014 158.1)",
+          "oklch(84% 0.011 158.1)",
+          "oklch(95% 0.006 158.1)"
         ]
       },
-      "rule-dark": {
+      "line-dark": {
         "role": "neutral",
-        "displayName": "Blue Ruling (dark mode)",
-        "canonical": "#1c2b3e",
-        "oklch": "oklch(28.5% 0.041 254.8)",
+        "displayName": "Line (dark)",
+        "canonical": "#2a4a52",
+        "oklch": "oklch(38.8% 0.040 215.5)",
         "mode": "dark",
-        "cssVar": "--rule",
+        "cssVar": "--line",
         "tonalRamp": [
-          "oklch(15% 0.016 254.8)",
-          "oklch(27% 0.023 254.8)",
-          "oklch(39% 0.031 254.8)",
-          "oklch(51% 0.038 254.8)",
-          "oklch(63% 0.036 254.8)",
-          "oklch(75% 0.028 254.8)",
-          "oklch(86% 0.021 254.8)",
-          "oklch(95% 0.016 254.8)"
+          "oklch(15% 0.016 215.5)",
+          "oklch(26% 0.028 215.5)",
+          "oklch(38% 0.036 215.5)",
+          "oklch(49% 0.040 215.5)",
+          "oklch(61% 0.040 215.5)",
+          "oklch(72% 0.036 215.5)",
+          "oklch(84% 0.028 215.5)",
+          "oklch(95% 0.016 215.5)"
         ]
       },
-      "rule-strong-dark": {
+      "line-strong-dark": {
         "role": "neutral",
-        "displayName": "Strong Ruling (dark mode)",
-        "canonical": "#2a4060",
-        "oklch": "oklch(36.9% 0.062 257.7)",
+        "displayName": "Strong Line (dark)",
+        "canonical": "#3d6670",
+        "oklch": "oklch(48.4% 0.049 215.0)",
         "mode": "dark",
-        "cssVar": "--rule-strong",
+        "cssVar": "--line-strong",
         "tonalRamp": [
-          "oklch(15% 0.024 257.7)",
-          "oklch(27% 0.035 257.7)",
-          "oklch(39% 0.047 257.7)",
-          "oklch(51% 0.058 257.7)",
-          "oklch(63% 0.054 257.7)",
-          "oklch(75% 0.043 257.7)",
-          "oklch(86% 0.032 257.7)",
-          "oklch(95% 0.024 257.7)"
+          "oklch(15% 0.019 215.0)",
+          "oklch(26% 0.034 215.0)",
+          "oklch(38% 0.043 215.0)",
+          "oklch(49% 0.048 215.0)",
+          "oklch(61% 0.048 215.0)",
+          "oklch(72% 0.043 215.0)",
+          "oklch(84% 0.034 215.0)",
+          "oklch(95% 0.019 215.0)"
         ]
       },
-      "blue-dark": {
+      "accent-hover-dark": {
         "role": "primary",
-        "displayName": "Cover-Stock Blue (dark mode)",
-        "canonical": "#7fb0f0",
-        "oklch": "oklch(74.8% 0.107 255.4)",
+        "displayName": "Ochre Lifted (dark)",
+        "canonical": "#f0b856",
+        "oklch": "oklch(81.5% 0.131 79.0)",
         "mode": "dark",
-        "cssVar": "--blue",
+        "cssVar": "--accent-hover",
         "tonalRamp": [
-          "oklch(15% 0.041 255.4)",
-          "oklch(27% 0.061 255.4)",
-          "oklch(39% 0.08 255.4)",
-          "oklch(51% 0.1 255.4)",
-          "oklch(63% 0.094 255.4)",
-          "oklch(75% 0.074 255.4)",
-          "oklch(86% 0.056 255.4)",
-          "oklch(95% 0.041 255.4)"
+          "oklch(15% 0.053 79.0)",
+          "oklch(26% 0.091 79.0)",
+          "oklch(38% 0.117 79.0)",
+          "oklch(49% 0.130 79.0)",
+          "oklch(61% 0.130 79.0)",
+          "oklch(72% 0.117 79.0)",
+          "oklch(84% 0.091 79.0)",
+          "oklch(95% 0.053 79.0)"
         ]
       },
-      "blue-hover-dark": {
+      "link-dark": {
         "role": "primary",
-        "displayName": "Cover-Stock Blue, Hover (dark mode)",
-        "canonical": "#a2c7f6",
-        "oklch": "oklch(81.9% 0.078 254.6)",
+        "displayName": "Ochre Ink (dark)",
+        "canonical": "#f0b856",
+        "oklch": "oklch(81.5% 0.131 79.0)",
         "mode": "dark",
-        "cssVar": "--blue-hover",
+        "cssVar": "--link",
         "tonalRamp": [
-          "oklch(15% 0.03 254.6)",
-          "oklch(27% 0.044 254.6)",
-          "oklch(39% 0.058 254.6)",
-          "oklch(51% 0.073 254.6)",
-          "oklch(63% 0.068 254.6)",
-          "oklch(75% 0.054 254.6)",
-          "oklch(86% 0.04 254.6)",
-          "oklch(95% 0.03 254.6)"
+          "oklch(15% 0.053 79.0)",
+          "oklch(26% 0.091 79.0)",
+          "oklch(38% 0.117 79.0)",
+          "oklch(49% 0.130 79.0)",
+          "oklch(61% 0.130 79.0)",
+          "oklch(72% 0.117 79.0)",
+          "oklch(84% 0.091 79.0)",
+          "oklch(95% 0.053 79.0)"
         ]
       },
-      "blue-wash-dark": {
+      "accent-wash-dark": {
         "role": "primary",
-        "displayName": "Blue Wash (dark mode)",
-        "canonical": "#13243a",
-        "oklch": "oklch(25.8% 0.048 255.5)",
+        "displayName": "Ochre Wash (dark)",
+        "canonical": "#3a3a26",
+        "oklch": "oklch(34.2% 0.033 108.0)",
         "mode": "dark",
-        "cssVar": "--blue-wash",
+        "cssVar": "--accent-wash",
         "tonalRamp": [
-          "oklch(15% 0.018 255.5)",
-          "oklch(27% 0.027 255.5)",
-          "oklch(39% 0.036 255.5)",
-          "oklch(51% 0.045 255.5)",
-          "oklch(63% 0.042 255.5)",
-          "oklch(75% 0.033 255.5)",
-          "oklch(86% 0.025 255.5)",
-          "oklch(95% 0.018 255.5)"
-        ]
-      },
-      "on-blue-dark": {
-        "role": "primary",
-        "displayName": "On Blue (dark mode)",
-        "canonical": "#08111c",
-        "oklch": "oklch(17.5% 0.027 253.8)",
-        "mode": "dark",
-        "cssVar": "--on-blue",
-        "tonalRamp": [
-          "oklch(15% 0.01 253.8)",
-          "oklch(27% 0.015 253.8)",
-          "oklch(39% 0.02 253.8)",
-          "oklch(51% 0.025 253.8)",
-          "oklch(63% 0.024 253.8)",
-          "oklch(75% 0.019 253.8)",
-          "oklch(86% 0.014 253.8)",
-          "oklch(95% 0.01 253.8)"
-        ]
-      },
-      "bar-dark": {
-        "role": "primary",
-        "displayName": "Shell Binding (dark mode)",
-        "canonical": "#132c50",
-        "oklch": "oklch(29.4% 0.073 257.7)",
-        "mode": "dark",
-        "cssVar": "--bar",
-        "tonalRamp": [
-          "oklch(15% 0.028 257.7)",
-          "oklch(27% 0.041 257.7)",
-          "oklch(39% 0.055 257.7)",
-          "oklch(51% 0.068 257.7)",
-          "oklch(63% 0.064 257.7)",
-          "oklch(75% 0.05 257.7)",
-          "oklch(86% 0.038 257.7)",
-          "oklch(95% 0.028 257.7)"
-        ]
-      },
-      "bar-ink-dark": {
-        "role": "primary",
-        "displayName": "Bar Ink (dark mode)",
-        "canonical": "#e3ecf8",
-        "oklch": "oklch(94% 0.019 255.5)",
-        "mode": "dark",
-        "cssVar": "--bar-ink",
-        "tonalRamp": [
-          "oklch(15% 0.007 255.5)",
-          "oklch(27% 0.011 255.5)",
-          "oklch(39% 0.014 255.5)",
-          "oklch(51% 0.018 255.5)",
-          "oklch(63% 0.017 255.5)",
-          "oklch(75% 0.013 255.5)",
-          "oklch(86% 0.01 255.5)",
-          "oklch(95% 0.007 255.5)"
-        ]
-      },
-      "bar-ink-2-dark": {
-        "role": "primary",
-        "displayName": "Bar Ink, Secondary (dark mode)",
-        "canonical": "#9db6d6",
-        "oklch": "oklch(76.8% 0.054 254.7)",
-        "mode": "dark",
-        "cssVar": "--bar-ink-2",
-        "tonalRamp": [
-          "oklch(15% 0.02 254.7)",
-          "oklch(27% 0.03 254.7)",
-          "oklch(39% 0.04 254.7)",
-          "oklch(51% 0.05 254.7)",
-          "oklch(63% 0.047 254.7)",
-          "oklch(75% 0.037 254.7)",
-          "oklch(86% 0.028 254.7)",
-          "oklch(95% 0.02 254.7)"
-        ]
-      },
-      "pen-dark": {
-        "role": "secondary",
-        "displayName": "Teacher's Red Pen (dark mode)",
-        "canonical": "#ff7a6e",
-        "oklch": "oklch(73.2% 0.164 27.1)",
-        "mode": "dark",
-        "cssVar": "--pen",
-        "tonalRamp": [
-          "oklch(15% 0.063 27.1)",
-          "oklch(27% 0.093 27.1)",
-          "oklch(39% 0.124 27.1)",
-          "oklch(51% 0.154 27.1)",
-          "oklch(63% 0.144 27.1)",
-          "oklch(75% 0.114 27.1)",
-          "oklch(86% 0.086 27.1)",
-          "oklch(95% 0.063 27.1)"
-        ]
-      },
-      "margin-dark": {
-        "role": "tertiary",
-        "displayName": "Printed Margin (dark mode)",
-        "canonical": "#4a2a35",
-        "oklch": "oklch(32.9% 0.05 358.1)",
-        "mode": "dark",
-        "cssVar": "--margin",
-        "tonalRamp": [
-          "oklch(15% 0.019 358.1)",
-          "oklch(27% 0.028 358.1)",
-          "oklch(39% 0.038 358.1)",
-          "oklch(51% 0.047 358.1)",
-          "oklch(63% 0.044 358.1)",
-          "oklch(75% 0.035 358.1)",
-          "oklch(86% 0.026 358.1)",
-          "oklch(95% 0.019 358.1)"
+          "oklch(15% 0.013 108.0)",
+          "oklch(26% 0.023 108.0)",
+          "oklch(38% 0.029 108.0)",
+          "oklch(49% 0.032 108.0)",
+          "oklch(61% 0.032 108.0)",
+          "oklch(72% 0.029 108.0)",
+          "oklch(84% 0.023 108.0)",
+          "oklch(95% 0.013 108.0)"
         ]
       },
       "ok-dark": {
         "role": "secondary",
-        "displayName": "Done Green (dark mode)",
-        "canonical": "#6fcf8a",
-        "oklch": "oklch(77.8% 0.135 151.3)",
+        "displayName": "Sage (dark)",
+        "canonical": "#8db580",
+        "oklch": "oklch(73.0% 0.086 138.1)",
         "mode": "dark",
         "cssVar": "--ok",
         "tonalRamp": [
-          "oklch(15% 0.051 151.3)",
-          "oklch(27% 0.076 151.3)",
-          "oklch(39% 0.101 151.3)",
-          "oklch(51% 0.126 151.3)",
-          "oklch(63% 0.118 151.3)",
-          "oklch(75% 0.093 151.3)",
-          "oklch(86% 0.07 151.3)",
-          "oklch(95% 0.051 151.3)"
+          "oklch(15% 0.034 138.1)",
+          "oklch(26% 0.060 138.1)",
+          "oklch(38% 0.077 138.1)",
+          "oklch(49% 0.085 138.1)",
+          "oklch(61% 0.085 138.1)",
+          "oklch(72% 0.077 138.1)",
+          "oklch(84% 0.060 138.1)",
+          "oklch(95% 0.034 138.1)"
+        ]
+      },
+      "warn-dark": {
+        "role": "tertiary",
+        "displayName": "Amber Warning (dark)",
+        "canonical": "#f0c36a",
+        "oklch": "oklch(83.9% 0.119 82.9)",
+        "mode": "dark",
+        "cssVar": "--warn",
+        "tonalRamp": [
+          "oklch(15% 0.048 82.9)",
+          "oklch(26% 0.083 82.9)",
+          "oklch(38% 0.106 82.9)",
+          "oklch(49% 0.118 82.9)",
+          "oklch(61% 0.118 82.9)",
+          "oklch(72% 0.106 82.9)",
+          "oklch(84% 0.083 82.9)",
+          "oklch(95% 0.048 82.9)"
+        ]
+      },
+      "err-dark": {
+        "role": "secondary",
+        "displayName": "Coral (dark)",
+        "canonical": "#ef8576",
+        "oklch": "oklch(72.9% 0.133 29.1)",
+        "mode": "dark",
+        "cssVar": "--err",
+        "tonalRamp": [
+          "oklch(15% 0.053 29.1)",
+          "oklch(26% 0.092 29.1)",
+          "oklch(38% 0.118 29.1)",
+          "oklch(49% 0.131 29.1)",
+          "oklch(61% 0.131 29.1)",
+          "oklch(72% 0.118 29.1)",
+          "oklch(84% 0.092 29.1)",
+          "oklch(95% 0.053 29.1)"
+        ]
+      },
+      "bar-dark": {
+        "role": "neutral",
+        "displayName": "Status Bar (dark)",
+        "canonical": "#0a181b",
+        "oklch": "oklch(18.1% 0.018 215.3)",
+        "mode": "dark",
+        "cssVar": "--bar",
+        "tonalRamp": [
+          "oklch(15% 0.007 215.3)",
+          "oklch(26% 0.013 215.3)",
+          "oklch(38% 0.016 215.3)",
+          "oklch(49% 0.018 215.3)",
+          "oklch(61% 0.018 215.3)",
+          "oklch(72% 0.016 215.3)",
+          "oklch(84% 0.013 215.3)",
+          "oklch(95% 0.007 215.3)"
+        ]
+      },
+      "bar-2-dark": {
+        "role": "neutral",
+        "displayName": "Status Bar Raised (dark)",
+        "canonical": "#163036",
+        "oklch": "oklch(29.1% 0.034 214.5)",
+        "mode": "dark",
+        "cssVar": "--bar-2",
+        "tonalRamp": [
+          "oklch(15% 0.013 214.5)",
+          "oklch(26% 0.023 214.5)",
+          "oklch(38% 0.030 214.5)",
+          "oklch(49% 0.033 214.5)",
+          "oklch(61% 0.033 214.5)",
+          "oklch(72% 0.030 214.5)",
+          "oklch(84% 0.023 214.5)",
+          "oklch(95% 0.013 214.5)"
+        ]
+      },
+      "bar-line-dark": {
+        "role": "neutral",
+        "displayName": "Bar Divider (dark)",
+        "canonical": "#24434a",
+        "oklch": "oklch(36.2% 0.039 213.8)",
+        "mode": "dark",
+        "cssVar": "--bar-line",
+        "tonalRamp": [
+          "oklch(15% 0.015 213.8)",
+          "oklch(26% 0.027 213.8)",
+          "oklch(38% 0.034 213.8)",
+          "oklch(49% 0.038 213.8)",
+          "oklch(61% 0.038 213.8)",
+          "oklch(72% 0.034 213.8)",
+          "oklch(84% 0.027 213.8)",
+          "oklch(95% 0.015 213.8)"
         ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "The start view value line only."
+        "purpose": "The start view's single headline, max 14ch."
       },
       "headline": {
         "displayName": "Headline",
-        "purpose": "Document page titles (Licenses)."
+        "purpose": "Document section titles in the start view's label column."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Worksheet row titles and drawer panel heads."
+        "purpose": "Guide rows in the guides tile and the reset dialog."
       },
       "wordmark": {
         "displayName": "Wordmark",
-        "purpose": "The lowercase xiaonux name in page heads and the bar (17px there)."
+        "purpose": "xiaonux name in the page head (15px in the workspace bar)."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Page default text."
+        "purpose": "Page default reading text."
       },
       "body-panel": {
         "displayName": "Panel Body",
-        "purpose": "Drawer and option-card text, in ink-2."
+        "purpose": "Drawer panel and tile text, in ink-2."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Buttons, tabs, field labels, row numbers, status readouts; sentence case."
+        "purpose": "Buttons."
+      },
+      "tile-title": {
+        "displayName": "Tile Title",
+        "purpose": "Bold lowercase title in a tile head."
+      },
+      "tile-caption": {
+        "displayName": "Tile Caption",
+        "purpose": "Tile head caption and data labels (facts, fields, legends, table heads)."
+      },
+      "status": {
+        "displayName": "Status",
+        "purpose": "Status bar readouts and modules, tabular numerals."
       },
       "command": {
         "displayName": "Command",
-        "purpose": "Guide commands, path field, inline code."
+        "purpose": "Command rows and inline code."
       },
       "terminal": {
         "displayName": "Terminal",
-        "purpose": "xterm.js only."
+        "purpose": "xterm."
       }
     },
     "cssCustomProperties": {
-      "source": "web/src/style.css",
-      "note": "Tokens live as CSS custom properties on :root with a prefers-color-scheme: dark override; frontmatter -dark keys mirror the override.",
-      "declaredButUnused": [
-        "--warn (#8a5a00 / #e7c160)"
-      ]
+      "file": "web/src/style.css",
+      "light": ":root",
+      "dark": "@media (prefers-color-scheme: dark) :root",
+      "note": "Frontmatter keys map 1:1 to custom properties; -dark keys are the dark-scheme values of the same property."
     },
     "barSignalLamps": [
       {
-        "state": "on",
-        "value": "#7fe0a0"
+        "name": "lamp-off",
+        "value": "var(--bar-ink-2)",
+        "purpose": "Network module lamp when internet is off."
       },
       {
-        "state": "waiting",
-        "value": "#f2cf6b"
+        "name": "lamp-on",
+        "value": "#8db580",
+        "purpose": "Network module lamp when connected (sage, fixed for the dark bar)."
       },
       {
-        "state": "blocked",
-        "value": "#ff8f84"
+        "name": "lamp-waiting",
+        "value": "#e3a43b",
+        "purpose": "Network module lamp while connecting."
       },
       {
-        "state": "status-error-text",
-        "value": "#ffd2cd"
+        "name": "lamp-blocked",
+        "value": "#e46a5b",
+        "purpose": "Network module lamp when blocked (coral, fixed for the dark bar)."
+      },
+      {
+        "name": "status-error",
+        "value": "#ff9b8e",
+        "purpose": "Status cell text in the error state."
+      },
+      {
+        "name": "bar-button-hover",
+        "value": "#1d3b42",
+        "purpose": "Bar button hover fill."
       }
     ],
     "shadows": [
       {
         "name": "floating-layer",
-        "value": "0 6px 24px -8px rgba(20, 40, 70, 0.28), 0 1px 3px rgba(20, 40, 70, 0.12)",
-        "valueDark": "0 8px 28px -8px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4)",
-        "purpose": "Download popover, transfer toast, overlay drawer below 960px. Never on resting surfaces."
+        "value": "0 10px 30px -10px rgba(15, 35, 40, 0.35), 0 2px 6px rgba(15, 35, 40, 0.12)",
+        "purpose": "Light scheme: toast, popover, dialog, consent card, overlay column."
+      },
+      {
+        "name": "floating-layer-dark",
+        "value": "0 14px 36px -10px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4)",
+        "purpose": "Dark scheme value of the floating layer."
+      },
+      {
+        "name": "dialog-backdrop",
+        "value": "rgba(6, 16, 18, 0.55)",
+        "purpose": "Reset dialog backdrop."
       }
     ],
     "focus": [
       {
         "name": "focus-ring",
-        "value": "outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 3px",
-        "purpose": "Global :focus-visible; on the bar the outline colour is var(--bar-ink)."
+        "value": "2px solid var(--accent); outline-offset: 2px",
+        "purpose": "Global :focus-visible ring."
+      },
+      {
+        "name": "focused-tile",
+        "value": "border: 2px solid var(--accent) on :focus-within",
+        "purpose": "Signature: the workspace tile holding the keyboard (terminal, guide, services)."
       }
     ],
     "motion": [
       {
         "name": "ease",
         "value": "cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "System ease for all state transitions."
+        "purpose": "System easing for every transition and entrance."
       },
       {
-        "name": "control-state",
+        "name": "state",
         "value": "160ms",
-        "purpose": "Button background, border and colour changes."
+        "purpose": "Hover fills, border colours, the focused-tile frame."
       },
       {
-        "name": "drawer",
-        "value": "width 280ms",
-        "purpose": "Worksheet drawer open/close."
+        "name": "view-in",
+        "value": "200ms, translateY(6px) from 0 opacity",
+        "purpose": "View switches and the dialog opening."
       },
       {
         "name": "rise",
-        "value": "260ms, translateY 8px + fade",
-        "purpose": "Transfer toast entrance."
+        "value": "260ms, 8px rise",
+        "purpose": "Transfer toast and consent card entrance."
       },
       {
-        "name": "pen-stroke",
+        "name": "drawer",
+        "value": "280ms width",
+        "purpose": "Right column open and close; the terminal refits once when it settles."
+      },
+      {
+        "name": "check-stroke",
         "value": "420ms stroke-dashoffset 30 to 0",
-        "purpose": "Red-pen check drawing in on a freshly completed step."
-      },
-      {
-        "name": "meter",
-        "value": "width 200ms linear",
-        "purpose": "Transfer progress fill."
+        "purpose": "Step check stroking in."
       },
       {
         "name": "reduced-motion",
         "value": "1ms",
-        "purpose": "All animations and transitions collapse under prefers-reduced-motion: reduce."
+        "purpose": "prefers-reduced-motion collapses all animation and transition durations."
       }
     ],
     "breakpoints": [
+      {
+        "name": "single-fact",
+        "value": "max-width: 480px"
+      },
       {
         "name": "phone",
         "value": "max-width: 640px"
@@ -710,24 +861,38 @@
         "value": "max-width: 959px"
       },
       {
+        "name": "how-stack / sticky-labels",
+        "value": "960px"
+      },
+      {
         "name": "touch-keys",
         "value": "pointer: coarse"
       }
     ],
     "terminalThemes": {
       "source": "web/src/main.ts THEMES",
-      "font": "14px / 1.15 mono stack",
+      "fontFamily": "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace",
+      "fontSize": 14,
+      "lineHeight": 1.15,
       "light": {
-        "background": "#fdfeff",
-        "foreground": "#1b2430",
-        "cursor": "#1d4f91",
-        "selection": "#c9dbf3"
+        "background": "#fbf8f0",
+        "foreground": "#1d3036",
+        "cursor": "#a5650a",
+        "selectionBackground": "#ecd9b0",
+        "red": "#b2372a",
+        "green": "#3d7a35",
+        "yellow": "#8a5a00",
+        "blue": "#1f6a85"
       },
       "dark": {
-        "background": "#0c131c",
-        "foreground": "#dbe3ec",
-        "cursor": "#7fb0f0",
-        "selection": "#24426b"
+        "background": "#12262b",
+        "foreground": "#e9e2d0",
+        "cursor": "#e3a43b",
+        "selectionBackground": "#2f5058",
+        "red": "#e46a5b",
+        "green": "#8db580",
+        "yellow": "#e3a43b",
+        "blue": "#7fb7c9"
       }
     }
   },
@@ -736,128 +901,144 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Solid cover-stock blue; the one action that matters (Start Linux, Download).",
+      "description": "Ochre fill for the one pressable primary action: Start Linux, Download, Email, Contact.",
       "html": "<button class=\"ds-btn-primary\">Start Linux</button>",
-      "css": ".ds-btn-primary{font:600 14px/1 var(--sans);background:var(--blue);color:var(--on-blue);border:1px solid transparent;border-radius:var(--radius);padding:10px 16px;cursor:pointer;transition:background-color 160ms var(--ease)}.ds-btn-primary:hover{background:var(--blue-hover)}.ds-btn-primary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.ds-btn-primary:disabled{opacity:.55;cursor:progress}"
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; font: 600 14px/1 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background: var(--accent, #e3a43b); color: var(--on-accent, #1b1306); border: 1px solid transparent; border-radius: 6px; padding: 10px 16px; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-primary:hover { background: var(--accent-hover, #eeb24c); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.55; cursor: progress; }"
     },
     {
       "name": "Quiet Button",
       "kind": "button",
       "refersTo": "button-quiet",
-      "description": "Ruled outline in blue text; secondary actions such as Try it and Cancel.",
+      "description": "Inset secondary action (Try it, Cancel, Keep my files); its border turns ochre on hover.",
       "html": "<button class=\"ds-btn-quiet\">Try it</button>",
-      "css": ".ds-btn-quiet{font:600 14px/1 var(--sans);background:transparent;color:var(--blue);border:1px solid var(--rule-strong);border-radius:var(--radius);padding:10px 16px;cursor:pointer;transition:background-color 160ms var(--ease),border-color 160ms var(--ease)}.ds-btn-quiet:hover{background:var(--blue-wash);border-color:var(--blue)}.ds-btn-quiet:focus-visible{outline:2px solid var(--blue);outline-offset:2px}"
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; justify-content: center; font: 600 14px/1 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background: var(--tile-2, #eee7d8); color: var(--ink, #1d3036); border: 1px solid var(--line, #d2c8b2); border-radius: 6px; padding: 10px 16px; cursor: pointer; transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-quiet:hover { border-color: var(--accent, #e3a43b); background: var(--tile, #f7f3ea); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; }"
     },
     {
-      "name": "Top Bar",
+      "name": "Status Bar",
       "kind": "nav",
-      "refersTo": "bar",
-      "description": "The blue binding over the terminal: wordmark, live status, network chip, icon buttons.",
-      "html": "<header class=\"ds-bar\"><span class=\"ds-wm\">xiaonux</span><span class=\"ds-status\">Ready in 0.48 s</span><button class=\"ds-chip\"><span class=\"ds-dot\"></span>Internet off</button><span style=\"flex:1\"></span><button class=\"ds-bar-btn\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M10 13V3M6 7l4-4 4 4M4 13v3h12v-3\"/></svg>Upload</button><button class=\"ds-bar-btn\" aria-expanded=\"true\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M3 4h14v12H3zM12 4v12\"/></svg>Guide</button></header>",
-      "css": ".ds-bar{display:flex;align-items:center;gap:8px 14px;min-height:48px;padding:6px 10px 6px 16px;background:var(--bar);color:var(--bar-ink);font-family:var(--sans)}.ds-wm{font:700 17px/1 var(--sans);letter-spacing:-.01em}.ds-status{font-size:13px;color:var(--bar-ink-2);font-variant-numeric:tabular-nums;min-width:16ch}.ds-chip{display:inline-flex;align-items:center;gap:8px;font:500 13px/1 var(--sans);color:var(--bar-ink);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:6px 12px;cursor:pointer}.ds-chip:hover{background:rgba(255,255,255,.16)}.ds-dot{width:8px;height:8px;border-radius:50%;background:var(--bar-ink-2)}.ds-bar-btn{display:inline-flex;align-items:center;gap:6px;font:500 13px/1 var(--sans);color:var(--bar-ink);background:transparent;border:1px solid transparent;border-radius:var(--radius);padding:7px 10px;cursor:pointer}.ds-bar-btn:hover{background:rgba(255,255,255,.12)}.ds-bar-btn[aria-expanded=true]{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.22)}.ds-bar-btn:focus-visible,.ds-chip:focus-visible{outline:2px solid var(--bar-ink);outline-offset:2px}.ds-bar-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}"
+      "refersTo": "status-bar",
+      "description": "Near-black teal bar in both schemes: wordmark, status cell, network module, spacer, MIPS, bar buttons.",
+      "html": "<header class=\"ds-bar\"><a class=\"ds-bar-mark\" href=\"#\"><svg viewBox=\"0 0 32 32\" width=\"16\" height=\"16\" aria-hidden=\"true\"><rect width=\"32\" height=\"32\" rx=\"7\" fill=\"#e3a43b\"/><path d=\"M8 11l6 5-6 5M16 22h8\" fill=\"none\" stroke=\"#1b1306\" stroke-width=\"3.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>xiaonux</a><span class=\"ds-bar-status\">Ready</span><button class=\"ds-bar-chip\"><span class=\"ds-bar-dot\"></span>Internet off</button><span class=\"ds-bar-spacer\"></span><span class=\"ds-bar-stats\">412 MIPS</span><button class=\"ds-bar-btn\">Reset</button><button class=\"ds-bar-btn\" aria-expanded=\"true\">Guide</button></header>",
+      "css": ".ds-bar { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 6px 4px 12px; background: var(--bar, #0f2328); color: var(--bar-ink, #e9e2d0); border-bottom: 1px solid var(--bar-line, #2a4a52); font: 12.5px/1 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; } .ds-bar-mark { display: inline-flex; align-items: center; gap: 8px; color: var(--bar-ink, #e9e2d0); text-decoration: none; font: 700 15px/1 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; padding: 5px 6px; border-radius: 4px; } .ds-bar-mark:hover { background: var(--bar-2, #183238); } .ds-bar-status { color: var(--bar-ink, #e9e2d0); min-width: 16ch; padding: 0 10px; line-height: 24px; border-left: 1px solid var(--bar-line, #2a4a52); font-variant-numeric: tabular-nums; } .ds-bar-chip { display: inline-flex; align-items: center; gap: 8px; font: 12.5px/1 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--bar-ink, #e9e2d0); background: transparent; border: 0; border-left: 1px solid var(--bar-line, #2a4a52); padding: 6px 12px; cursor: pointer; } .ds-bar-chip:hover { background: var(--bar-2, #183238); } .ds-bar-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--bar-ink-2, #a9b4ad); } .ds-bar-spacer { flex: 1; } .ds-bar-stats { color: var(--bar-ink-2, #a9b4ad); min-width: 10ch; text-align: right; padding: 0 10px; line-height: 24px; border-right: 1px solid var(--bar-line, #2a4a52); margin-right: 4px; font-variant-numeric: tabular-nums; } .ds-bar-btn { font: 600 12.5px/1 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; color: var(--bar-ink, #e9e2d0); background: var(--bar-2, #183238); border: 1px solid var(--bar-line, #2a4a52); border-radius: 5px; padding: 6px 10px; cursor: pointer; } .ds-bar-btn:hover { border-color: var(--line-strong, #ad9f80); background: #1d3b42; } .ds-bar-btn[aria-expanded=\"true\"] { background: var(--accent, #e3a43b); border-color: var(--accent, #e3a43b); color: var(--on-accent, #1b1306); } .ds-bar :focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Focused Tile",
+      "kind": "card",
+      "refersTo": "tile",
+      "description": "Signature: the workspace tile holding keyboard focus wears a 2px ochre frame; the others keep a 2px line.",
+      "html": "<div class=\"ds-work\"><section class=\"ds-tile\" tabindex=\"0\"><div class=\"ds-tile-head\"><b>terminal</b><span>bash · Debian 13 · riscv64</span></div><div class=\"ds-tile-body\">root@xiaonux:~#</div></section><section class=\"ds-tile\" tabindex=\"0\"><div class=\"ds-tile-head\"><b>guides</b><span>unix basics</span></div><div class=\"ds-tile-body\">Click a tile to focus it.</div></section></div>",
+      "css": ".ds-work { display: flex; gap: 8px; padding: 8px; background: var(--ground, #e6dfcf); } .ds-tile { flex: 1; background: var(--tile, #f7f3ea); border: 2px solid var(--line, #d2c8b2); border-radius: 6px; transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1); outline: none; } .ds-tile:focus-within { border-color: var(--accent, #e3a43b); } .ds-tile-head { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px 0 12px; border-bottom: 1px solid var(--line, #d2c8b2); font: 12px/1.2 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink-2, #4c5d61); white-space: nowrap; } .ds-tile-head b { font: 600 12.5px/1.2 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink, #1d3036); } .ds-tile-head span { overflow: hidden; text-overflow: ellipsis; } .ds-tile-body { padding: 12px; font: 14px/1.5 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink, #1d3036); min-height: 80px; }"
     },
     {
       "name": "Drawer Tabs",
       "kind": "nav",
       "refersTo": "tab",
-      "description": "Worksheet sections; selected tab is blue text on a blue 2px underline.",
+      "description": "Lowercase mono tabs in the guide tile head; the selected tab carries an ochre underline.",
       "html": "<div class=\"ds-tabs\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\">Guides</button><button role=\"tab\" aria-selected=\"false\">Network</button><button role=\"tab\" aria-selected=\"false\">Safety</button></div>",
-      "css": ".ds-tabs{display:flex;gap:4px;padding:10px 16px 0;border-bottom:1px solid var(--rule);background:var(--paper)}.ds-tabs [role=tab]{font:600 13.5px/1 var(--sans);color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;padding:10px 10px 11px;margin-bottom:-1px;cursor:pointer}.ds-tabs [role=tab]:hover{color:var(--ink)}.ds-tabs [role=tab][aria-selected=true]{color:var(--blue);border-bottom-color:var(--blue)}.ds-tabs [role=tab]:focus-visible{outline:2px solid var(--blue);outline-offset:2px}"
+      "css": ".ds-tabs { display: flex; gap: 2px; padding: 0 6px; border-bottom: 1px solid var(--line, #d2c8b2); background: var(--tile, #f7f3ea); } .ds-tabs [role=tab] { font: 600 12.5px/1 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink-2, #4c5d61); background: none; border: 0; border-bottom: 2px solid transparent; padding: 11px 9px 10px; margin-bottom: -1px; cursor: pointer; text-transform: lowercase; } .ds-tabs [role=tab]:hover { color: var(--ink, #1d3036); } .ds-tabs [role=tab][aria-selected=\"true\"] { color: var(--ink, #1d3036); border-bottom-color: var(--accent, #e3a43b); } .ds-tabs [role=tab]:focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; }"
     },
     {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input",
-      "description": "Sheet-filled field with stacked semibold label; mono for paths.",
-      "html": "<label class=\"ds-field\"><span>File to download (under /root)</span><input type=\"text\" value=\"/root/\"></label>",
-      "css": ".ds-field{display:grid;gap:6px;font:600 13px/1.3 var(--sans);color:var(--ink-2)}.ds-field input{font:500 13.5px/1.3 var(--mono);color:var(--ink);background:var(--sheet);border:1px solid var(--rule-strong);border-radius:var(--radius);padding:8px 10px}.ds-field input:hover{border-color:var(--blue)}.ds-field input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}"
+      "description": "Inset field with a stacked mono label, used for the guide picker and the download path.",
+      "html": "<label class=\"ds-field\"><span>File to download (under /root)</span><input class=\"ds-input\" type=\"text\" value=\"/root/\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; font: 12px/1.3 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink-2, #4c5d61); } .ds-input { font: 13.5px/1.3 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink, #1d3036); background: var(--tile-2, #eee7d8); border: 1px solid var(--line, #d2c8b2); border-radius: 5px; padding: 8px 10px; width: 100%; } .ds-input:hover { border-color: var(--line-strong, #ad9f80); } .ds-input:focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; }"
     },
     {
       "name": "Network Option Card",
-      "kind": "chip",
-      "refersTo": "option-card",
-      "description": "Radio as a whole ruled card; checked card takes blue border and blue wash.",
-      "html": "<label class=\"ds-opt\"><input type=\"radio\" name=\"ds-n\" checked><span><b>Off</b> Nothing leaves this tab.</span></label><label class=\"ds-opt\"><input type=\"radio\" name=\"ds-n\"><span><b>This computer</b> Through the small xiaonux-net helper.</span></label>",
-      "css": ".ds-opt{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:10px 12px;margin-bottom:8px;background:var(--sheet);border:1px solid var(--rule);border-radius:var(--radius);font:13.5px/1.4 var(--sans);color:var(--ink-2);cursor:pointer}.ds-opt:has(input:checked){border-color:var(--blue);background:var(--blue-wash)}.ds-opt b{display:block;color:var(--ink);font-size:14px}.ds-opt input{margin:3px 0 0;accent-color:var(--blue)}"
-    },
-    {
-      "name": "Worksheet",
       "kind": "custom",
-      "refersTo": "worksheet",
-      "description": "Ruled numbered rows on a near-square sheet, numbers in a printed margin.",
-      "html": "<div class=\"ds-sheet\"><p class=\"ds-sheet-head\"><b>Guides</b><span>Commands typed for you, checked when they run</span></p><ol class=\"ds-rows\"><li><div><h2>Learn Unix</h2><p>Files, pipes, permissions and processes.</p></div><button class=\"ds-btn-quiet\">Try it</button></li><li><div><h2>Python &amp; packages</h2><p>Python 3 with pip.</p></div><button class=\"ds-btn-quiet\">Try it</button></li></ol></div>",
-      "css": ".ds-sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:2px;font-family:var(--sans);color:var(--ink)}.ds-sheet-head{display:flex;justify-content:space-between;gap:12px;margin:0;padding:12px 20px 10px 64px;border-bottom:2px solid var(--rule-strong);font-size:13px;color:var(--ink-2)}.ds-sheet-head b{color:var(--ink)}.ds-rows{list-style:none;margin:0;padding:0;counter-reset:row;background:linear-gradient(90deg,transparent 51px,var(--margin) 51px,var(--margin) 52px,transparent 52px)}.ds-rows li{counter-increment:row;display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:4px 28px;padding:20px 24px 20px 0;border-bottom:1px solid var(--rule)}.ds-rows li:last-child{border-bottom:0}.ds-rows li::before{content:counter(row);align-self:start;justify-self:end;font:600 13px/1.4 var(--sans);color:var(--ink-2);font-variant-numeric:tabular-nums}.ds-rows h2{font-size:19px;line-height:1.3;margin:0 0 4px;letter-spacing:-.01em}.ds-rows p{margin:0;color:var(--ink-2);font-size:14.5px}.ds-btn-quiet{font:600 14px/1 var(--sans);background:transparent;color:var(--blue);border:1px solid var(--rule-strong);border-radius:var(--radius);padding:10px 16px;cursor:pointer;transition:background-color 160ms var(--ease),border-color 160ms var(--ease)}.ds-btn-quiet:hover{background:var(--blue-wash);border-color:var(--blue)}.ds-btn-quiet:focus-visible{outline:2px solid var(--blue);outline-offset:2px}"
+      "refersTo": "option-card",
+      "description": "Whole-card radio label; checked gets an ochre border over the ochre wash.",
+      "html": "<fieldset class=\"ds-netmodes\"><label><input type=\"radio\" name=\"ds-net\" checked /><span><b>Off</b> Nothing leaves this tab.</span></label><label><input type=\"radio\" name=\"ds-net\" /><span><b>This computer</b> Through the small xiaonux-net helper.</span></label></fieldset>",
+      "css": ".ds-netmodes { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; } .ds-netmodes label { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 12px; background: var(--tile-2, #eee7d8); border: 1px solid var(--line, #d2c8b2); border-radius: 5px; font: 13.5px/1.45 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; color: var(--ink-2, #4c5d61); cursor: pointer; } .ds-netmodes label:hover { border-color: var(--line-strong, #ad9f80); } .ds-netmodes label:has(input:checked) { border-color: var(--accent, #e3a43b); background: var(--accent-wash, #f5e3bd); } .ds-netmodes b { display: block; color: var(--ink, #1d3036); font-size: 14px; } .ds-netmodes input { margin: 3px 0 0; accent-color: var(--accent, #e3a43b); }"
     },
     {
-      "name": "Guide Step with Red-Pen Check",
+      "name": "Guide Step",
       "kind": "custom",
       "refersTo": "step-mark",
-      "description": "Numbered ring that becomes a hand-drawn red-pen check when the command has run; command row with Type it.",
-      "html": "<ol class=\"ds-steps\"><li class=\"ds-step ds-done\"><span class=\"ds-mark\"><span class=\"ds-num\">1</span><svg class=\"ds-check\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 13l5 5L20 5\"/></svg></span><div><p>Look at the file type.</p><div class=\"ds-cmd\"><code>file sample.sh</code><button class=\"ds-btn-quiet ds-sm\">Type it</button></div></div></li><li class=\"ds-step\"><span class=\"ds-mark\"><span class=\"ds-num\">2</span><svg class=\"ds-check\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 13l5 5L20 5\"/></svg></span><div><p>Record its fingerprint.</p><div class=\"ds-cmd\"><code>sha256sum sample.sh</code><button class=\"ds-btn-quiet ds-sm\">Type it</button></div></div></li></ol>",
-      "css": ".ds-steps{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule);font-family:var(--sans)}.ds-step{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:12px 0;border-bottom:1px solid var(--rule)}.ds-step p{margin:2px 0 8px;color:var(--ink);font-size:14px}.ds-done p{color:var(--ink-2)}.ds-mark{position:relative;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--rule-strong);border-radius:50%;color:var(--ink-2)}.ds-num{font:600 12.5px/1 var(--sans);font-variant-numeric:tabular-nums}.ds-check{position:absolute;left:1px;top:-5px;width:30px;height:30px;fill:none;stroke:var(--pen);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:30;stroke-dashoffset:30}.ds-done .ds-mark{border-color:transparent}.ds-done .ds-num{opacity:.35}.ds-done .ds-check{stroke-dashoffset:0;animation:ds-pen 420ms var(--ease) both}@keyframes ds-pen{from{stroke-dashoffset:30}}.ds-cmd{display:flex;align-items:flex-start;gap:8px;background:var(--sheet);border:1px solid var(--rule);border-radius:var(--radius);padding:6px 6px 6px 10px}.ds-cmd code{flex:1;padding:4px 0 2px;font:12.5px/1.45 var(--mono);color:var(--ink);white-space:pre}.ds-btn-quiet{font:600 14px/1 var(--sans);background:transparent;color:var(--blue);border:1px solid var(--rule-strong);border-radius:var(--radius);padding:10px 16px;cursor:pointer;transition:background-color 160ms var(--ease),border-color 160ms var(--ease)}.ds-btn-quiet:hover{background:var(--blue-wash);border-color:var(--blue)}.ds-btn-quiet:focus-visible{outline:2px solid var(--blue);outline-offset:2px}.ds-sm{font-size:13px;padding:6px 10px}"
+      "description": "Square step mark that fills sage with a stroked check when the command has run; only the next step has an ochre Type it.",
+      "html": "<ol class=\"ds-steps\"><li class=\"ds-step ds-done\"><span class=\"ds-mark\"><span class=\"ds-num\">1</span><svg class=\"ds-check\" viewBox=\"0 0 18 18\"><path d=\"M4 9.5l3.2 3L14 5.5\"/></svg></span><div><p>See where you are.</p><div class=\"ds-cmd\"><code>pwd</code><button class=\"ds-type\">Type it</button></div></div></li><li class=\"ds-step ds-next\"><span class=\"ds-mark\"><span class=\"ds-num\">2</span></span><div><p>List the files here.</p><div class=\"ds-cmd\"><code>ls -la</code><button class=\"ds-type\">Type it</button></div></div></li></ol>",
+      "css": ".ds-steps { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line, #d2c8b2); font: 14px/1.5 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; } .ds-step { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line, #d2c8b2); } .ds-step p { margin: 2px 0 8px; color: var(--ink, #1d3036); } .ds-done p { color: var(--ink-2, #4c5d61); } .ds-mark { position: relative; width: 26px; height: 26px; display: grid; place-items: center; background: var(--tile-2, #eee7d8); border: 1px solid var(--line-strong, #ad9f80); border-radius: 4px; color: var(--ink-2, #4c5d61); } .ds-mark:hover { border-color: var(--accent, #e3a43b); } .ds-num { font: 600 12px/1 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; font-variant-numeric: tabular-nums; } .ds-done .ds-mark { background: var(--ok, #3d7a35); border-color: var(--ok, #3d7a35); } .ds-done .ds-num { opacity: 0; } .ds-check { position: absolute; inset: 3px; width: 18px; height: 18px; fill: none; stroke: var(--tile, #f7f3ea); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 30; animation: ds-stroke 420ms cubic-bezier(0.16, 1, 0.3, 1) both; } @keyframes ds-stroke { from { stroke-dashoffset: 30; } to { stroke-dashoffset: 0; } } .ds-cmd { display: flex; align-items: flex-start; gap: 8px; background: var(--term, #fbf8f0); border: 1px solid var(--line, #d2c8b2); border-radius: 4px; padding: 5px 5px 5px 10px; } .ds-cmd code { flex: 1; padding: 4px 0 2px; font: 12.5px/1.45 ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace; color: var(--ink, #1d3036); } .ds-type { font: 600 12.5px/1 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; padding: 6px 10px; border-radius: 6px; background: var(--tile-2, #eee7d8); color: var(--ink, #1d3036); border: 1px solid var(--line, #d2c8b2); cursor: pointer; } .ds-type:hover, .ds-next .ds-type { background: var(--accent, #e3a43b); border-color: var(--accent, #e3a43b); color: var(--on-accent, #1b1306); } .ds-type:focus-visible { outline: 2px solid var(--accent, #e3a43b); outline-offset: 2px; }"
+    },
+    {
+      "name": "Services Tiling",
+      "kind": "card",
+      "refersTo": "offers-frame",
+      "description": "Gapped 2x2 tiling of offer tiles inside an 8px-padded bar frame.",
+      "html": "<ul class=\"ds-offers\"><li class=\"ds-offer\"><h3>Custom Debian images</h3><p>Your packages and course files, built into the image.</p></li><li class=\"ds-offer\"><h3>Self-hosting and embedding</h3><p>Run it on your own domain or inside a course site.</p></li><li class=\"ds-offer\"><h3>Workshops and training</h3><p>Hands-on Unix and security-lab sessions.</p></li><li class=\"ds-offer\"><h3>Support and consulting</h3><p>Custom features and guide writing.</p></li></ul>",
+      "css": ".ds-offers { list-style: none; margin: 0; padding: 8px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; background: var(--bar, #0f2328); border-radius: 8px; } .ds-offer { min-width: 0; padding: 16px 18px 18px; background: var(--tile, #f7f3ea); border: 1px solid var(--line, #d2c8b2); border-radius: 6px; } .ds-offer h3 { font: 650 16px/1.3 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; color: var(--ink, #1d3036); margin: 0 0 6px; letter-spacing: -0.01em; } .ds-offer p { font: 14px/1.5 system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; color: var(--ink-2, #4c5d61); margin: 0; }"
     }
   ],
   "narrative": {
-    "northStar": "The Lab Worksheet Beside the Machine",
-    "overview": "xiaonux looks like a university lab session: a terminal that fills the room, and a printed worksheet beside it. The ground is bond-white paper, the shell is bound in cover-stock blue, text is graphite, worksheet rows sit on faint blue ruling with their numbers in a printed margin, and the only red on the page is the teacher's pen marking what has happened. Dark mode is the same sheet in blue-black ink wash, with the blue and the red lifted rather than swapped for new hues.\n\nThe system is quiet and dense in the way working documents are dense. Colour carries meaning, not mood: blue means \"you can press this\" (plus the top bar that frames the machine), red means \"a state was marked\", green means \"done/connected\". Everything else is paper, ink and ruling. The terminal is the product, so the shell gets the room and the worksheet lives in a drawer that can close.\n\nThe world refuses the category default for in-browser Linux: a black page with a neon accent and a terminal floating in a fake window. Here the terminal is the surface itself, edge to edge under the bar, on the same sheet colour as the worksheet.",
+    "northStar": "The Tiling Workstation",
+    "overview": "**Creative North Star: \"The Tiling Workstation\"**\n\nxiaonux is a tiled Linux workstation set up the way Linux people set up their own: an i3 or sway desktop with gapped tiles on a ground, a thin status bar across the top, and nothing floating that does not have to. In dark mode the ground is deep teal and the tiles are a lifted teal; in light mode the ground is sand and the tiles are paper. The status bar is near-black teal in both modes, and the start page opens with the same bar the machine wears, so the page and the machine read as one setup.\n\nColour does a job; it is not there for mood. Sand-coloured text, teal surfaces, and one ochre that appears in three places only: on what you can press, on the next guide step, and on the tile that holds the keyboard. Sage means done or connected, coral means an error. Everything else is ground, tile, line and ink. The terminal is the product, so the terminal tile takes the room and the guide column can close.\n\nThe world turns down two category defaults. One is the fake desktop with draggable, overlapping windows. The other is the near-black page with one neon accent and a terminal floating in a window chrome. Here tiles sit side by side with the ground showing in the gaps, and a tile head is a plain mono title line, the way a tiling window manager draws it.",
     "keyCharacteristics": [
-      "Paper ground, sheet surfaces, graphite ink, blue ruling lines instead of boxes and shadows.",
-      "Cover-stock blue on the top bar and on pressable things only.",
-      "Red pen reserved for state marks: hand-drawn checks, guide progress, errors and blocked states.",
-      "A pale printed margin rule separating row numbers from row text.",
-      "System sans for everything; monospace only for commands, paths and the terminal.",
-      "Status readouts in fixed-width cells with tabular numerals, so changing numbers never move the layout.",
-      "Light and dark from the same role tokens via `prefers-color-scheme`."
+      "Gapped tiling: tiles separated by an 8px gutter of ground, framed by a 1px line, 6px corners.",
+      "A thin near-black teal status bar in both colour schemes, with status, network module, MIPS and actions laid out as bar modules divided by vertical lines.",
+      "Ochre restricted to pressables, the next guide step, and the focused tile's frame.",
+      "Mono for the machine's voice (status bar, tile heads, data labels, commands, terminal); system sans for prose and titles.",
+      "Flat tiles; one shadow, reserved for layers that float over the work.",
+      "Light and dark from the same role tokens via `prefers-color-scheme`, with the xterm palette kept in step."
     ],
     "rules": [
       {
-        "name": "The Pressable Blue Rule",
-        "body": "Blue fills and blue text belong to the top bar and to things you can press (buttons, links, tabs, selected options, focus). A heading or a decoration is never blue.",
+        "name": "The Three Places Rule",
+        "body": "Ochre goes on things you can press, on the next guide step, and on the tile that has focus. A heading, a divider, a decoration or a resting status is never ochre.",
         "section": "colors"
       },
       {
-        "name": "The Red Pen Rule",
-        "body": "`pen` marks state that has happened: a check, progress, an error, a block. If nothing changed, nothing is red.",
+        "name": "The One Bar Rule",
+        "body": "The status bar is near-black teal in both schemes, and the start page's head is the same bar. Its lamps are fixed values tuned for the dark bar, not the page's role colours.",
         "section": "colors"
       },
       {
-        "name": "The Printed Margin Rule",
-        "body": "The margin line is `margin`, never `pen`. Printed furniture and teacher's marks stay different colours.",
+        "name": "The Sage and Coral Rule",
+        "body": "Sage marks something done or connected; coral marks an error or a block. Neither is used for emphasis.",
         "section": "colors"
       },
       {
-        "name": "The Mono Means Machine Rule",
-        "body": "Monospace appears only where text is something you type or the machine prints: commands, paths, code, the terminal.",
+        "name": "The Machine Speaks Mono Rule",
+        "body": "Mono is for what the machine shows or what you type: the status bar, tile heads, data labels, package names, commands, the terminal. Prose, headings and buttons stay in the sans.",
         "section": "typography"
       },
       {
         "name": "The Fixed Cell Rule",
-        "body": "Changing numbers (status, MIPS, timings, row numbers, counts) use tabular numerals and a reserved min-width, so updates never shift neighbours.",
+        "body": "Changing numbers (status, MIPS, timings, step numbers, transfer progress) use tabular numerals, and the bar reserves their width (status 16ch, MIPS 10ch) so updates never move a neighbour.",
         "section": "typography"
       },
       {
-        "name": "The Paper Doesn't Float Rule",
-        "body": "Resting surfaces (worksheet, panels, cards, option cards) get a 1px rule border and no shadow. A shadow means \"this is on top and will go away\".",
+        "name": "The Gapped Tiling Rule",
+        "body": "Neighbouring tiles are separated by the 8px ground gap, never by a shared border and never by overlap. A group of tiles that belongs together sits inside a frame of `bar` with the same 8px padding.",
+        "section": "layout"
+      },
+      {
+        "name": "The Tiles Don't Float Rule",
+        "body": "Resting tiles get a line border and no shadow. A shadow means \"this sits on top and will leave\".",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do keep blue for the top bar and pressable things: buttons, links, tabs, selected options, focus rings.",
-      "Do use `pen` only for marks of state: checks, progress, errors, blocked.",
-      "Do separate surfaces with 1px `rule` lines and the `paper`/`sheet` tone step before reaching for anything else.",
-      "Do keep finished steps visible and checked; completed work never disappears.",
-      "Do put changing numbers in fixed-width cells with tabular numerals.",
-      "Do derive every dark-mode value from the same role (lift blue and pen; ink-wash ground), and keep the xterm palette in step with the role tokens.",
-      "Do honour `prefers-reduced-motion` by collapsing animations and transitions to 1ms.",
-      "Do keep touch targets at 44px on the touch-key row."
+      "**Do** keep ochre to pressables, the next guide step and the focused tile's frame.",
+      "**Do** separate tiles with the 8px ground gap, and group related tiles inside a `bar` frame padded by the same gap.",
+      "**Do** give workspace tiles a 2px border so the focus frame swaps colour without moving anything.",
+      "**Do** open every tile that names itself with a 32px mono, lowercase tile head.",
+      "**Do** keep the status bar near-black teal in both schemes, and use its modules (divided by `bar-line` verticals) for live readouts.",
+      "**Do** put changing numbers in fixed-width cells with tabular numerals.",
+      "**Do** keep finished guide steps visible and filled sage.",
+      "**Do** derive every dark-mode value from the same role and keep the xterm palette in step with the role tokens.",
+      "**Do** honour `prefers-reduced-motion` by collapsing animations and transitions to 1ms.",
+      "**Do** keep touch keys at 44px."
     ],
     "donts": [
-      "Don't make the product a black page with a neon accent and a terminal in a floating window.",
-      "Don't colour headings or decorations blue to add emphasis.",
-      "Don't use `pen` red for decoration, emphasis or the printed margin.",
-      "Don't put shadows on resting surfaces; the floating-layer shadow is for popover, toast and overlay drawer only.",
-      "Don't load web fonts; the first prompt's load time outranks a custom face.",
-      "Don't set prose, labels or headings in monospace."
+      "**Don't** build a fake desktop: no draggable, overlapping or title-barred windows.",
+      "**Don't** drop the ground to neutral black or swap ochre for a saturated neon.",
+      "**Don't** use ochre on headings, section rules, dividers, resting decorations or non-pressable hover states.",
+      "**Don't** put shadows on resting tiles; the floating-layer shadow is for toast, popover, dialog, consent card and the overlay column only.",
+      "**Don't** use pills or circles; corners stay between 2px and 8px.",
+      "**Don't** use text glyphs as icons; icons are inline SVG strokes.",
+      "**Don't** load web fonts.",
+      "**Don't** set prose, headings or buttons in mono."
     ]
   }
 }

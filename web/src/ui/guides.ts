@@ -32,6 +32,18 @@ export function initGuides(type: (s: string) => void): Guides {
   const select = document.getElementById('lesson-select') as HTMLSelectElement;
   const intro = document.getElementById('lesson-intro')!;
   const list = document.getElementById('lesson-steps')!;
+  const progress = document.getElementById('lesson-progress');
+  // One segment per step: done, next, or still to come.
+  const drawProgress = () => {
+    if (!progress) return;
+    const fin = new Set(done[lesson.id] ?? []);
+    const next = lesson.steps.findIndex((_, i) => !fin.has(i));
+    progress.replaceChildren(...lesson.steps.map((_, i) => {
+      const seg = document.createElement('i');
+      if (fin.has(i)) seg.className = 'done'; else if (i === next) seg.className = 'next';
+      return seg;
+    }));
+  };
   const done = lessonProgress();
   let lesson = LESSONS[0];
   let typed: number | null = null;   // step whose command is in the input line
@@ -60,6 +72,7 @@ export function initGuides(type: (s: string) => void): Guides {
     li.classList.toggle('fresh', on && animate);
     if (on && animate) li.addEventListener('animationend', () => li.classList.remove('fresh'), { once: true });
     li.querySelector('.mark')?.setAttribute('aria-pressed', String(on));
+    drawProgress();
   }
 
   function show(id: string) {
@@ -103,6 +116,7 @@ export function initGuides(type: (s: string) => void): Guides {
       li.append(mark, body);
       return li;
     }));
+    drawProgress();
   }
 
   show(lesson.id);

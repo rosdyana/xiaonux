@@ -1,60 +1,69 @@
 ---
 name: xiaonux
-description: Real Debian Linux in the browser tab, set out as a lab worksheet beside the machine.
+description: Real Debian Linux in the browser tab, set up as a tiled workstation the way Linux people set up their own.
 colors:
-  paper: "#f6f8fb"
-  sheet: "#fdfeff"
-  ink: "#1b2430"
-  ink-2: "#4c5866"
-  rule: "#d3e0f0"
-  rule-strong: "#b3c8e4"
-  blue: "#1d4f91"
-  blue-hover: "#163f75"
-  blue-wash: "#e6eef9"
-  on-blue: "#ffffff"
-  bar: "#1d4f91"
-  bar-ink: "#e8f0fb"
-  bar-ink-2: "#b7cbe6"
-  pen: "#c8302b"
-  margin: "#efb9c0"
-  ok: "#1d7438"
-  paper-dark: "#0a1018"
-  sheet-dark: "#0c131c"
-  ink-dark: "#dbe3ec"
-  ink-2-dark: "#9aa8b8"
-  rule-dark: "#1c2b3e"
-  rule-strong-dark: "#2a4060"
-  blue-dark: "#7fb0f0"
-  blue-hover-dark: "#a2c7f6"
-  blue-wash-dark: "#13243a"
-  on-blue-dark: "#08111c"
-  bar-dark: "#132c50"
-  bar-ink-dark: "#e3ecf8"
-  bar-ink-2-dark: "#9db6d6"
-  pen-dark: "#ff7a6e"
-  margin-dark: "#4a2a35"
-  ok-dark: "#6fcf8a"
+  ground: "#e6dfcf"
+  tile: "#f7f3ea"
+  tile-2: "#eee7d8"
+  term: "#fbf8f0"
+  ink: "#1d3036"
+  ink-2: "#4c5d61"
+  line: "#d2c8b2"
+  line-strong: "#ad9f80"
+  accent: "#e3a43b"
+  accent-hover: "#eeb24c"
+  on-accent: "#1b1306"
+  link: "#855000"
+  accent-wash: "#f5e3bd"
+  ok: "#3d7a35"
+  warn: "#8a5a00"
+  err: "#b2372a"
+  bar: "#0f2328"
+  bar-2: "#183238"
+  bar-line: "#2a4a52"
+  bar-ink: "#e9e2d0"
+  bar-ink-2: "#a9b4ad"
+  focus: "#a5650a"
+  focus-dark: "#e3a43b"
+  ground-dark: "#0e1f23"
+  tile-dark: "#183238"
+  tile-2-dark: "#1d3b42"
+  term-dark: "#12262b"
+  ink-dark: "#e9e2d0"
+  ink-2-dark: "#a9b4ad"
+  line-dark: "#2a4a52"
+  line-strong-dark: "#3d6670"
+  accent-hover-dark: "#f0b856"
+  link-dark: "#f0b856"
+  accent-wash-dark: "#3a3a26"
+  ok-dark: "#8db580"
+  warn-dark: "#f0c36a"
+  err-dark: "#ef8576"
+  bar-dark: "#0a181b"
+  bar-2-dark: "#163036"
+  bar-line-dark: "#24434a"
 typography:
   display:
     fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
-    fontSize: "clamp(34px, 4.6vw, 56px)"
-    fontWeight: 750
-    lineHeight: 1.05
-    letterSpacing: "-0.03em"
+    fontSize: "clamp(36px, 4.8vw, 60px)"
+    fontWeight: 760
+    lineHeight: 1.03
+    letterSpacing: "-0.035em"
   headline:
     fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
-    fontSize: "clamp(30px, 4vw, 44px)"
+    fontSize: "22px"
     fontWeight: 700
-    letterSpacing: "-0.03em"
+    lineHeight: 1.2
+    letterSpacing: "-0.015em"
   title:
     fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
-    fontSize: "19px"
+    fontSize: "18px"
     fontWeight: 700
     lineHeight: 1.3
     letterSpacing: "-0.01em"
   wordmark:
     fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
-    fontSize: "19px"
+    fontSize: "17px"
     fontWeight: 700
     lineHeight: 1
     letterSpacing: "-0.01em"
@@ -70,8 +79,23 @@ typography:
     lineHeight: 1.5
   label:
     fontFamily: "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
-    fontSize: "13px"
+    fontSize: "14px"
     fontWeight: 600
+    lineHeight: 1
+  tile-title:
+    fontFamily: "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace"
+    fontSize: "12.5px"
+    fontWeight: 600
+    lineHeight: 1.2
+  tile-caption:
+    fontFamily: "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: 1.2
+  status:
+    fontFamily: "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace"
+    fontSize: "12.5px"
+    fontWeight: 400
     lineHeight: 1
     fontFeature: "\"tnum\" 1"
   command:
@@ -85,262 +109,302 @@ typography:
     fontWeight: 400
     lineHeight: 1.15
 rounded:
-  sheet: "2px"
-  key: "3px"
-  control: "6px"
-  pill: "999px"
-  mark: "50%"
+  dot: "2px"
+  kbd: "3px"
+  key: "4px"
+  control: "5px"
+  tile: "6px"
+  frame: "8px"
 spacing:
   hairline: "4px"
-  tight: "8px"
+  gap: "8px"
   snug: "12px"
+  tile-pad: "14px"
   base: "16px"
-  row: "20px"
   block: "24px"
   page: "32px"
   section: "40px"
-  chapter: "88px"
   column-gap: "56px"
+  chapter: "96px"
 components:
   button-primary:
-    backgroundColor: "{colors.blue}"
-    textColor: "{colors.on-blue}"
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.on-accent}"
     typography: "{typography.label}"
-    rounded: "{rounded.control}"
+    rounded: "{rounded.tile}"
     padding: "10px 16px"
   button-primary-hover:
-    backgroundColor: "{colors.blue-hover}"
+    backgroundColor: "{colors.accent-hover}"
   button-primary-large:
-    backgroundColor: "{colors.blue}"
-    textColor: "{colors.on-blue}"
-    rounded: "{rounded.control}"
-    padding: "15px 28px"
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.on-accent}"
+    rounded: "{rounded.tile}"
+    padding: "14px 24px"
   button-quiet:
-    backgroundColor: "transparent"
-    textColor: "{colors.blue}"
-    rounded: "{rounded.control}"
+    backgroundColor: "{colors.tile-2}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.tile}"
     padding: "10px 16px"
   button-quiet-hover:
-    backgroundColor: "{colors.blue-wash}"
-  button-quiet-small:
-    textColor: "{colors.blue}"
-    rounded: "{rounded.control}"
+    backgroundColor: "{colors.tile}"
+  button-small:
+    rounded: "{rounded.tile}"
     padding: "6px 10px"
-  bar:
+  button-danger:
+    backgroundColor: "{colors.err}"
+    textColor: "#ffffff"
+    rounded: "{rounded.tile}"
+    padding: "10px 16px"
+  tile:
+    backgroundColor: "{colors.tile}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.tile}"
+  tile-head:
+    textColor: "{colors.ink-2}"
+    typography: "{typography.tile-caption}"
+    height: "32px"
+    padding: "0 8px 0 12px"
+  status-bar:
     backgroundColor: "{colors.bar}"
     textColor: "{colors.bar-ink}"
-    height: "48px"
-    padding: "6px 10px 6px 16px"
+    typography: "{typography.status}"
+    height: "40px"
+    padding: "4px 6px 4px 12px"
   bar-button:
+    backgroundColor: "{colors.bar-2}"
+    textColor: "{colors.bar-ink}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  bar-button-expanded:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.on-accent}"
+  network-module:
     backgroundColor: "transparent"
     textColor: "{colors.bar-ink}"
-    rounded: "{rounded.control}"
-    padding: "7px 10px"
-  network-chip:
-    textColor: "{colors.bar-ink}"
-    rounded: "{rounded.pill}"
+    typography: "{typography.status}"
+    rounded: "0"
     padding: "6px 12px"
-  input:
-    backgroundColor: "{colors.sheet}"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.control}"
-    padding: "8px 10px"
   tab:
     backgroundColor: "transparent"
     textColor: "{colors.ink-2}"
-    padding: "10px 10px 11px"
+    padding: "11px 9px 10px"
   tab-selected:
-    textColor: "{colors.blue}"
-  worksheet:
-    backgroundColor: "{colors.sheet}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.sheet}"
-  worksheet-row:
-    padding: "20px 24px 20px 0"
-  step-mark:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink-2}"
-    rounded: "{rounded.mark}"
-    size: "28px"
-  command-row:
-    backgroundColor: "{colors.sheet}"
+  input:
+    backgroundColor: "{colors.tile-2}"
     textColor: "{colors.ink}"
-    typography: "{typography.command}"
     rounded: "{rounded.control}"
-    padding: "6px 6px 6px 10px"
+    padding: "8px 10px"
   option-card:
-    backgroundColor: "{colors.sheet}"
+    backgroundColor: "{colors.tile-2}"
     textColor: "{colors.ink-2}"
     rounded: "{rounded.control}"
     padding: "10px 12px"
   option-card-selected:
-    backgroundColor: "{colors.blue-wash}"
-  touch-key:
-    backgroundColor: "{colors.sheet}"
+    backgroundColor: "{colors.accent-wash}"
+  command-row:
+    backgroundColor: "{colors.term}"
     textColor: "{colors.ink}"
+    typography: "{typography.command}"
+    rounded: "{rounded.key}"
+    padding: "5px 5px 5px 10px"
+  step-mark:
+    backgroundColor: "{colors.tile-2}"
+    textColor: "{colors.ink-2}"
+    rounded: "{rounded.key}"
+    size: "26px"
+  step-mark-done:
+    backgroundColor: "{colors.ok}"
+    textColor: "{colors.tile}"
+  offers-frame:
+    backgroundColor: "{colors.bar}"
+    rounded: "{rounded.frame}"
+    padding: "8px"
+  offer-tile:
+    backgroundColor: "{colors.tile}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.tile}"
+    padding: "16px 18px 18px"
+  touch-key:
+    backgroundColor: "{colors.bar-2}"
+    textColor: "{colors.bar-ink}"
     rounded: "{rounded.control}"
     height: "44px"
     width: "44px"
+  touch-key-pressed:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.on-accent}"
 ---
 
 # Design System: xiaonux
 
 ## Overview
 
-**Creative North Star: "The Lab Worksheet Beside the Machine"**
+**Creative North Star: "The Tiling Workstation"**
 
-xiaonux looks like a university lab session: a terminal that fills the room, and a printed worksheet beside it. The ground is bond-white paper, the shell is bound in cover-stock blue, text is graphite, worksheet rows sit on faint blue ruling with their numbers in a printed margin, and the only red on the page is the teacher's pen marking what has happened. Dark mode is the same sheet in blue-black ink wash, with the blue and the red lifted rather than swapped for new hues.
+xiaonux is a tiled Linux workstation set up the way Linux people set up their own: an i3 or sway desktop with gapped tiles on a ground, a thin status bar across the top, and nothing floating that does not have to. In dark mode the ground is deep teal and the tiles are a lifted teal; in light mode the ground is sand and the tiles are paper. The status bar is near-black teal in both modes, and the start page opens with the same bar the machine wears, so the page and the machine read as one setup.
 
-The system is quiet and dense in the way working documents are dense. Colour carries meaning, not mood: blue means "you can press this" (plus the top bar that frames the machine), red means "a state was marked", green means "done/connected". Everything else is paper, ink and ruling. The terminal is the product, so the shell gets the room and the worksheet lives in a drawer that can close.
+Colour does a job; it is not there for mood. Sand-coloured text, teal surfaces, and one ochre that appears in three places only: on what you can press, on the next guide step, and on the tile that holds the keyboard. Sage means done or connected, coral means an error. Everything else is ground, tile, line and ink. The terminal is the product, so the terminal tile takes the room and the guide column can close.
 
-The world refuses the category default for in-browser Linux: a black page with a neon accent and a terminal floating in a fake window. Here the terminal is the surface itself, edge to edge under the bar, on the same sheet colour as the worksheet.
+The world turns down two category defaults. One is the fake desktop with draggable, overlapping windows. The other is the near-black page with one neon accent and a terminal floating in a window chrome. Here tiles sit side by side with the ground showing in the gaps, and a tile head is a plain mono title line, the way a tiling window manager draws it.
 
 **Key Characteristics:**
-- Paper ground, sheet surfaces, graphite ink, blue ruling lines instead of boxes and shadows.
-- Cover-stock blue on the top bar and on pressable things only.
-- Red pen reserved for state marks: hand-drawn checks, guide progress, errors and blocked states.
-- A pale printed margin rule separating row numbers from row text.
-- System sans for everything; monospace only for commands, paths and the terminal.
-- Status readouts in fixed-width cells with tabular numerals, so changing numbers never move the layout.
-- Light and dark from the same role tokens via `prefers-color-scheme`.
+- Gapped tiling: tiles separated by an 8px gutter of ground, framed by a 1px line, 6px corners.
+- A thin near-black teal status bar in both colour schemes, with status, network module, MIPS and actions laid out as bar modules divided by vertical lines.
+- Ochre restricted to pressables, the next guide step, and the focused tile's frame.
+- Mono for the machine's voice (status bar, tile heads, data labels, commands, terminal); system sans for prose and titles.
+- Flat tiles; one shadow, reserved for layers that float over the work.
+- Light and dark from the same role tokens via `prefers-color-scheme`, with the xterm palette kept in step.
 
 ## Colors
 
-A paper-and-ink neutral set, one pressable blue, one red pen, one done-green, and a pale pink margin rule; each role has a lifted dark-mode counterpart (the `-dark` keys).
+Sand and teal neutrals, one ochre, sage for done, coral for errors, and a near-black teal bar shared by both schemes. Dark-mode values sit under the `-dark` keys; `accent`, `on-accent`, `bar-ink` and `bar-ink-2` are the same in both schemes.
 
 ### Primary
-- **Cover-Stock Blue** (`blue`): fill of primary buttons, text and border of quiet buttons, links, the selected tab and its underline, selected network option border, the keyboard focus ring, the terminal cursor, pressed touch keys. `blue-hover` deepens it on hover (lightens it in dark mode); `blue-wash` is its pale tint for hover and selected backgrounds; `on-blue` is text on a blue fill.
-- **Shell Binding** (`bar`): the workspace top bar. Same blue as `blue` in light mode, a deeper navy in dark so the bar stays a frame rather than a lamp. Text on it uses `bar-ink` (primary) and `bar-ink-2` (secondary readouts).
+- **Workstation Ochre** (`accent`): fill of primary buttons, the expanded Guide bar button and pressed touch keys; the hover fill of quiet buttons in the guide list; the selected tab's underline; the checked network option's border; the keyboard focus ring and the frame of the focused tile in dark (light uses `focus` #a5650a, which holds 3:1 on sand); the "Type it" button on the next guide step; the logo tile. `accent-hover` lifts it on hover, `on-accent` is the near-black brown text on an ochre fill, and `accent-wash` is the pale (light) or olive-dark (dark) fill under a checked option card.
+- **Ochre Ink** (`link`): ochre as text. A deep amber-brown in light mode so links read on paper; the lifted ochre in dark mode.
 
 ### Secondary
-- **Teacher's Red Pen** (`pen`): the hand-drawn check on a finished step, the check that replaces a started guide's margin number, the "n of m done" progress line, the border of a failed transfer, and blocked network status. Nothing decorative.
-- **Done Green** (`ok`): a finished transfer meter and "connected" network status.
+- **Sage** (`ok`): a finished guide step's filled mark, a started guide's progress line, a completed transfer meter, connected network status, the "Isolated" ledger marker.
+- **Coral** (`err`): the danger button, the reset dialog's frame, a failed transfer's border, blocked network status.
 
 ### Tertiary
-- **Printed Margin** (`margin`): the 1px vertical margin rule between the row numbers and the row text on the start-view worksheet. A pale tint distinct from `pen` so the margin reads as printed, not marked.
+- **Amber Warning** (`warn`): the "Not isolated" ledger marker. Used once; do not spread it.
 
 ### Neutral
-- **Bond Paper** (`paper`): page ground of the start view and Licenses page, the drawer background, the touch-key row.
-- **Sheet** (`sheet`): the worksheet card, the terminal and workspace surface, inputs, command rows, option cards, popovers.
-- **Graphite** (`ink`): primary text and headings.
-- **Soft Graphite** (`ink-2`): secondary text, descriptions, row numbers, unselected tabs, captions.
-- **Blue Ruling** (`rule`): 1px row dividers, card and panel borders, meter track.
-- **Strong Ruling** (`rule-strong`): the 2px rule under a sheet header, input and quiet-button borders, step-mark rings, key caps, scrollbar thumbs.
+- **Ground** (`ground`): what shows between tiles. Sand in light mode, deep teal in dark mode. Page ground of the start view, the workspace and the Licenses page.
+- **Tile** (`tile`): the surface of every tile, popover, dialog, toast and consent card.
+- **Tile Inset** (`tile-2`): controls and insets sitting inside a tile: quiet buttons, inputs, option cards, file rows, step marks, kbd caps, the hovered list row.
+- **Terminal Paper** (`term`): the terminal's own ground and the command rows that quote it.
+- **Ink** (`ink`) and **Soft Ink** (`ink-2`): primary text; secondary text, tile captions, unselected tabs, row numbers. Teal-black in light mode, sand in dark mode.
+- **Line** (`line`) and **Strong Line** (`line-strong`): 1px tile borders and row dividers; section rules, kbd caps, step-mark rings, scrollbar thumbs, the hover border of inputs.
+- **Status Bar** (`bar`, `bar-2`, `bar-line`, `bar-ink`, `bar-ink-2`): the bar's ground, its button and hover fill, its module dividers, its text and its secondary readouts. The services offer's frame also uses `bar`.
 
-The terminal palette (xterm `THEMES` in `web/src/main.ts`) is derived from these roles: background `sheet`, foreground `ink`, cursor `blue`, bright red `pen`, green `ok`, blue `blue`; ANSI colours not in the system are tuned to sit on the same sheet.
+The terminal palette (xterm `THEMES` in `web/src/main.ts`) follows the roles: background `term`, foreground `ink`, red `err`, green `ok`, yellow `warn` (light) or `accent` (dark). The dark cursor is `accent`; the light cursor is a deeper ochre so it reads on paper.
 
 ### Named Rules
-**The Pressable Blue Rule.** Blue fills and blue text belong to the top bar and to things you can press (buttons, links, tabs, selected options, focus). A heading or a decoration is never blue.
+**The Three Places Rule.** Ochre goes on things you can press, on the next guide step, and on the tile that has focus. A heading, a divider, a decoration or a resting status is never ochre.
 
-**The Red Pen Rule.** `pen` marks state that has happened: a check, progress, an error, a block. If nothing changed, nothing is red.
+**The One Bar Rule.** The status bar is near-black teal in both schemes, and the start page's head is the same bar. Its lamps are fixed values tuned for the dark bar, not the page's role colours.
 
-**The Printed Margin Rule.** The margin line is `margin`, never `pen`. Printed furniture and teacher's marks stay different colours.
+**The Sage and Coral Rule.** Sage marks something done or connected; coral marks an error or a block. Neither is used for emphasis.
 
 ## Typography
 
 **Display Font:** system-ui stack (`--sans`)
 **Body Font:** system-ui stack (`--sans`)
-**Label/Mono Font:** ui-monospace stack (`--mono`) for commands, paths, code and the terminal only
+**Label/Mono Font:** ui-monospace stack (`--mono`) for the status bar, tile heads, data labels, commands and the terminal
 
-**Character:** One native sans in heavy weights and tight tracking for the few large lines, regular weight for reading, semibold for labels. No web fonts: the first prompt's load time is a product feature, so type identity comes from weight, size and tracking rather than a downloaded face.
+**Character:** One native sans in heavy weights and tight tracking for the few large lines, regular weight for reading, semibold for buttons. Mono is the workstation's voice: lowercase tile titles, bar readouts and key/value labels set in it read like a window manager's chrome. No web fonts; the first prompt's load time matters more than a custom face.
 
 ### Hierarchy
-- **Display** (750, clamp(34px, 4.6vw, 56px), 1.05, -0.03em): the start view's single value line, max 14ch (16ch when stacked).
-- **Headline** (700, clamp(30px, 4vw, 44px), -0.03em): document page titles (Licenses). Section heads in documents run 21px, -0.01em.
-- **Title** (700, 19px, 1.3, -0.01em): worksheet row titles; drawer panel heads at 18px, sub-heads at 15.5px.
-- **Body** (400, 15px, 1.5): page default. Lede 18px (16px at phone width) in `ink-2`, max 44ch; drawer panel text 14px in `ink-2`; reading measure 46 to 70ch.
-- **Label** (600, 13 to 14px, line-height 1): buttons, tabs, field labels, sheet header, row numbers. Sentence case; no uppercase tracking.
-- **Command** (mono, 12.5 to 13.5px, 1.45): guide commands, the download path field, inline `code` at 0.88em.
-- **Terminal** (mono, 14px, 1.15): xterm.
+- **Display** (760, clamp(36px, 4.8vw, 60px), 1.03, -0.035em): the start view's single headline, max 14ch (16ch when stacked).
+- **Headline** (700, 22px, 1.2, -0.015em): document section titles in the start view's label column. The Licenses page title runs clamp(30px, 4vw, 44px) at -0.03em.
+- **Title** (700, 18px, 1.3, -0.01em): guide rows in the start view's guides tile and the reset dialog. Drawer panel heads 17px; offer tiles 650 16px; group heads 600 17px; list item heads 600 15px.
+- **Body** (400, 15px, 1.5): page default. Lede 18px in `ink-2`, max 44ch (16px at phone width); section body 15px/1.55 at max 64ch; drawer panel and tile text 14px in `ink-2`.
+- **Label** (600, 14px, 1): buttons. Large buttons 16px, small 12.5px; bar buttons 600 12.5px.
+- **Tile title / caption** (mono 600 12.5px and mono 12px, 1.2): the tile head's bold title and its caption; lowercase. The same 12px mono labels the facts row, field labels, the network legend and table heads.
+- **Status** (mono 12.5px, 1, tabular): everything on the status bar except the wordmark and bar buttons.
+- **Command** (mono 12.5px, 1.45): command rows; inline `code` at 0.88em; the download path field at 13.5px.
+- **Terminal** (mono 14px, 1.15): xterm.
 
 ### Named Rules
-**The Mono Means Machine Rule.** Monospace appears only where text is something you type or the machine prints: commands, paths, code, the terminal.
+**The Machine Speaks Mono Rule.** Mono is for what the machine shows or what you type: the status bar, tile heads, data labels, package names, commands, the terminal. Prose, headings and buttons stay in the sans.
 
-**The Fixed Cell Rule.** Changing numbers (status, MIPS, timings, row numbers, counts) use tabular numerals and a reserved min-width, so updates never shift neighbours.
+**The Fixed Cell Rule.** Changing numbers (status, MIPS, timings, step numbers, transfer progress) use tabular numerals, and the bar reserves their width (status 16ch, MIPS 10ch) so updates never move a neighbour.
 
 ## Layout
 
-Two modes share one sheet.
+Everything is a tiling. Tiles sit on the ground with an 8px gap (`--gap`) between them and around the edge; they never overlap and never touch.
 
-**Start view:** a centred column, max 1120px, padded 24/32px. The cover is the first screen, sized by its content (hero padded `clamp(40px, 9vh, 96px)` above, 56px below): a head row (wordmark left; three section anchors, hidden below 860px, then GitHub, the safety link and the language picker), a two-column grid (1.05fr / 1fr, 56px gap, vertically centred) with the value line, lede and Start action on the left and the three-row worksheet on the right, and a ruled field row at its foot (machine, runs on, internet, license). Below the cover, document sections each take a 220px label column (title and short note, sticky from 960px) beside a content column, separated by 2px `rule-strong` rules and 88px `chapter` gaps (56px at 640px and below): What's on the machine (package manifests), What people use it for (use-case rows, each with its command), How it works (nested layer diagram beside ruled notes), Safety, plainly (two-column ledger), and Open source (closing Start action). Then a footer under a 1px rule. Below 860px the sections and the worksheet grid stack (16px and 32px gaps); below 640px padding drops to 16px, the Start button goes full width, and the worksheet's margin narrows (numbers column 28px, margin rule at 41px).
+**Workspace:** full viewport height (`100dvh`). A 40px status bar across the top: wordmark (logo tile and name, the Home link), status cell, network module, spacer, MIPS readout, then Upload, Download, Reset and Guide buttons. Under it, an 8px-padded work area holds the terminal tile on the left and the right column on the right. The column is 440px (max 38vw) and animates its width open and closed over 280ms. It stacks the guide tile (tabs: guides, network, safety) over a dismissible services tile, with an 8px gap between them. Below 960px the column overlays the terminal from the right (full width up to 440px) with the floating shadow, and the MIPS readout hides. Below 640px the work area's gap drops to 4px, the terminal's tile head hides, the wordmark shrinks to its logo tile, bar buttons go icon-only, and the status cell ellipsises. On coarse pointers a row of 44px touch keys sits under the work area on bar colours, its right edge faded to show it scrolls.
 
-**Workspace:** full viewport height (`100dvh`). A 48px blue bar; under it the terminal fills everything left of the drawer. The drawer is 420px (max 38vw) and animates its width open/closed. Below 960px the drawer overlays the terminal from the right (full width up to 420px) with the floating shadow, and the MIPS readout hides. Below 640px the bar shrinks the wordmark to its logo tile and drops button labels (icons only), and the status cell ellipsises. The wordmark is the Home link everywhere: in the workspace it returns to the start view through a `#machine` history entry (the browser's Back does the same), the machine keeps running, and the start view's Start button becomes "Return to Linux". The language picker lives in the start head, the drawer's tab row, and the Licenses head, never in the bar. On coarse pointers a 44px touch-key row appears under the terminal, its right edge faded to show it scrolls.
+**Start view:** a centred column, max 1160px, padded 16px top and 32px sides. The cover opens with the status bar as the page head (wordmark with its ochre square, then section anchors, GitHub, the safety link and the language picker). Below it, a two-column grid (1fr / 1fr, 56px gap, vertically centred, padded clamp(48px, 10vh, 104px) above and 56px below) holds the headline, lede and Start action on the left and the guides tile on the right. A row of four fact tiles follows (four, then two below 860px, then one below 480px). Document sections follow, each a 220px label column (sticky from 960px) beside the content, opened by a 1px `line-strong` rule and spaced 96px apart (64px at 640px and below): package tiles in an auto-fit grid (min 210px), use-case rows with their commands, nested tiles for how it works beside ruled notes, a two-column safety ledger, the services offer as a gapped 2x2 tiling inside a dark `bar` frame (one column below 640px), and the closing Start action. Below 860px the label column and the hero stack; below 640px side padding drops to 12px and large buttons go full width.
 
-**Document view (Licenses):** centred column, max 1040px, same head row as the start view, generous section spacing (48px between groups), tables in a bordered scroll wrapper.
+**Document view (Licenses):** centred column, max 1040px, padded 24px 32px; 48px between groups; tables in a bordered tile that scrolls sideways, turning into stacked rows below 640px.
 
-**Rhythm:** spacing comes from a small set of steps (4, 8, 12, 16, 20, 24, 32, 40, 56px), plus the 88px `chapter` gap between the start view's cover and its document sections (56px at 640px and below). Worksheet rows are 20px tall-padded; drawer steps 12px.
+**Rhythm:** 4, 8, 12, 14, 16, 24, 32, 40, 56 and 96px carry the layout. Tile insets are 12 to 18px; list rows inside tiles run 6 to 18px vertical padding by density.
+
+### Named Rules
+**The Gapped Tiling Rule.** Neighbouring tiles are separated by the 8px ground gap, never by a shared border and never by overlap. A group of tiles that belongs together sits inside a frame of `bar` with the same 8px padding.
 
 ## Elevation & Depth
 
-Flat by default. Depth comes from paper tone (`paper` under `sheet`) and ruling, not shadows. One soft shadow exists and it is reserved for layers that float over the work: the download popover, the transfer toast, and the overlay drawer at narrow widths.
+Flat. Depth comes from the tone step between ground, tile and tile inset, and from 1px lines. One shadow exists, for layers that float over the work and go away: the transfer toast, the download popover, the reset dialog, the consent card and the overlay column at narrow widths.
 
 ### Shadow Vocabulary
-- **Floating layer** (`--shadow`: `0 6px 24px -8px rgba(20,40,70,0.28), 0 1px 3px rgba(20,40,70,0.12)`; dark `0 8px 28px -8px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.4)`): only on things that sit above the terminal temporarily.
+- **Floating layer** (`--shadow`: light `0 10px 30px -10px rgba(15, 35, 40, 0.35), 0 2px 6px rgba(15, 35, 40, 0.12)`; dark `0 14px 36px -10px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4)`): only on layers above the tiling. The reset dialog's backdrop is `rgba(6, 16, 18, 0.55)`.
 
 ### Named Rules
-**The Paper Doesn't Float Rule.** Resting surfaces (worksheet, panels, cards, option cards) get a 1px rule border and no shadow. A shadow means "this is on top and will go away".
+**The Tiles Don't Float Rule.** Resting tiles get a line border and no shadow. A shadow means "this sits on top and will leave".
 
 ## Shapes
 
-Mostly square, softened just enough for touch. Controls (buttons, inputs, command rows, option cards, popover, touch keys) share a 6px radius. The worksheet itself is a 2px sheet: nearly square, like paper. Pills (999px) are reserved for the network chip on the bar; circles for step marks and status dots. Lines do the structural work: 1px `rule` dividers, a 2px `rule-strong` rule under sheet headers, 2px tab underlines. Icons are inline 18px SVG strokes (1.7 width, round caps); the check mark is a hand-drawn stroke path.
+Square-ish, softened just enough for touch. Tiles, buttons, popover and dialog share a 6px corner; the services frame is 8px so it wraps its tiles evenly. Small controls step down: 5px for bar buttons, inputs, option cards, file rows, touch keys and the language picker; 4px for command rows, step marks, nav links and the close button; 3px for kbd caps. Status dots, ledger markers and the wordmark's square are 2px-cornered squares; there are no pills and no circles. Lines do the structure: 1px `line` tile borders and dividers, 1px `line-strong` section rules, 2px tab underlines, and 2px borders on workspace tiles so the focus frame changes colour without shifting the layout. Icons are inline 16px SVG strokes (1.8 width, round caps and joins); the logo is an ochre rounded square holding a `>_` prompt stroked in `on-accent`.
 
 ## Components
 
 ### Buttons
-Plain and firm: a solid block or a ruled outline, no gradients, no lift.
-- **Shape:** gently rounded (6px).
-- **Primary:** `blue` fill, `on-blue` text, 600 14px, 10px 16px. Large (Start Linux) is 17px, 15px 28px.
-- **Hover / Focus:** fill deepens to `blue-hover` over 160ms on the system ease; focus is a 2px `blue` outline offset 2px (on the bar, `bar-ink`). Disabled drops to 55% opacity with a progress cursor.
-- **Quiet:** transparent, `blue` text, `rule-strong` border; hover fills `blue-wash` and the border turns `blue`. Used for "Try it", Cancel, and (small, 13px, 6px 10px) "Type it" on guide commands.
+Solid and plain: a filled block or an inset block, no gradients, no lift.
+- **Shape:** 6px corners.
+- **Primary:** `accent` fill, `on-accent` text, 600 14px, 10px 16px. Large (Start Linux, Email) 16px at 14px 24px; small (Contact) 12.5px at 6px 10px.
+- **Hover / Focus:** fill lifts to `accent-hover` over 160ms on the system ease (`cubic-bezier(0.16, 1, 0.3, 1)`). Focus is a 2px `accent` outline offset 2px. Disabled drops to 55% opacity with a progress cursor.
+- **Quiet:** `tile-2` fill, `ink` text, 1px `line` border; hover moves the border to `accent` and the fill to `tile`. In the guides tile, hover fills it fully with `accent`.
+- **Danger:** `err` fill, white text (near-black in dark mode); hover darkens with `brightness(0.92)`. Only in the reset dialog.
 
 ### Chips
-- **Network chip:** a pill on the bar, white at 8% fill with a 22% white border, 500 13px `bar-ink`, with an 8px status dot. Dot is `bar-ink-2` when off; signal-lamp green, amber, or coral (fixed values tuned for the dark bar) for on, waiting and blocked.
+- **Network module:** not a pill; a bar module divided from its neighbours by a 1px `bar-line` left border, mono 12.5px `bar-ink`, 6px 12px, with an 8px square lamp. The lamp is `bar-ink-2` when off and a fixed bar lamp when on (sage), waiting (ochre) or blocked (coral). Hover fills `bar-2`.
 
 ### Cards / Containers
-- **Corner Style:** 6px for controls-as-cards; 2px for the worksheet.
-- **Background:** `sheet` on `paper`.
-- **Shadow Strategy:** none at rest (see Elevation).
-- **Border:** 1px `rule`; `rule-strong` where the card is "mine" or interactive.
-- **Internal Padding:** 10px 12px for list and option cards; 12px 14px for the transfer toast; 16px for the popover.
+- **The tile:** the one container of this world. `tile` fill, 1px `line` border (2px in the workspace), 6px corners, no shadow.
+- **Tile head:** a 32px mono title line over a 1px `line` divider: bold 12.5px `ink` title, then a 12px `ink-2` caption that ellipsises, both lowercase. The terminal tile's head reads "terminal · bash · Debian 13 · riscv64"; the services tile's head carries a 26px close button.
+- **Internal padding:** 10px 14px for fact tiles, 12px 14px for nested layers and the toast, 16px 18px for offer tiles, 16px for drawer panels and the popover, 20px for the dialog.
+- **Nested tiles:** the how-it-works diagram nests tiles 12px deep, alternating `tile` and `tile-2`.
 
 ### Inputs / Fields
-- **Style:** `sheet` fill, 1px `rule-strong` border, 6px radius, 500 14px (path field in mono 13.5px), 8px 10px.
-- **Focus:** border turns `blue` on hover; keyboard focus is the global 2px `blue` ring.
-- **Labels:** stacked above, 600 13px `ink-2`, 6px gap.
-- **Option cards (radio):** whole card is the label; checked card gets a `blue` border and `blue-wash` fill; native radios tinted with `accent-color: blue`.
+- **Style:** `tile-2` fill, 1px `line` border, 5px corners, 500 14px sans (the path field in mono 13.5px), 8px 10px.
+- **Hover / Focus:** border turns `line-strong` on hover; keyboard focus is the global 2px `focus` ring (`#a5650a` light, `#e3a43b` dark).
+- **Labels:** stacked above, 12px mono `ink-2`, 6px gap.
+- **Option cards (radio):** the whole card is the label; hover moves the border to `line-strong`; checked moves it to `accent` with an `accent-wash` fill; native radios take `accent-color: accent`.
 
 ### Navigation
-- **Reset dialog:** a modal `<dialog>` on `sheet` with the title underlined in `pen`; "Keep my files" (quiet, focused first) and "Delete my files" (`pen` fill). Escape keeps. Reset also clears guide checks.
-- **Terminal focus:** Tab stays in the shell; Ctrl+Shift+G moves focus between the terminal and the drawer (hint under the Guide picker, hidden on touch).
-- **Top bar:** `bar` fill, 48px min height; wordmark (logo tile + name, a Home link), live status cell, network chip, spacer, MIPS readout, then icon+label bar buttons (Upload, Download, Reset, Guide). Bar buttons are transparent, hover white 12%, expanded state white 16% with a faint border.
-- **Drawer tabs:** 600 13.5px `ink-2` text with a 2px transparent underline; selected is `blue` text and `blue` underline sitting on the 1px tab-row rule.
-- **Page head:** wordmark (700 19px, `ink`) left, plain underlined links right.
+- **Status bar:** `bar` fill, 40px min height, 1px `bar-line` bottom edge, mono 12.5px. Modules (status, network, MIPS) are divided by 1px `bar-line` verticals. Bar buttons sit on `bar-2` with a `bar-line` border and 5px corners; hover lifts the border to `line-strong`; the expanded Guide button fills `accent`.
+- **Start page head:** the same bar as a 44px rounded strip; the wordmark's 12px ochre square stands in for the logo; links are plain `bar-ink` with a `bar-2` hover fill.
+- **Drawer tabs:** mono 600 12.5px, lowercase, `ink-2`, 2px transparent underline; hover goes to `ink`; selected is `ink` with an `accent` underline sitting on the tab row's 1px line.
+- **Keyboard:** Tab stays in the shell; Ctrl+Shift+G moves focus between the terminal and the guide tile (key chip on the terminal tile head and a hint under the steps, both hidden on touch).
 
-### Worksheet (signature)
-A `sheet` card with a header line (bold title left, `ink-2` caption right) over a 2px `rule-strong` rule, then numbered rows divided by 1px `rule`. Numbers sit in a 36px margin column, right-aligned in tabular 600 13px `ink-2`, separated from the text by the 1px `margin` line. When a guide has been started, its number is replaced by a red-pen check and a `pen` "n of m" progress line appears under the description.
+### Focused Tile (signature)
+Whichever workspace tile holds the keyboard wears the ochre frame. Workspace tiles (terminal, guide, services) carry a 2px `line` border; when focus is inside one, that border turns `focus` over 160ms (deep ochre `#a5650a` in light so it reads at 3:1 on sand; `#e3a43b` in dark). Ctrl+Shift+G moves the frame between the terminal and the guide. Only one tile has it at a time, and nothing else in the workspace draws an ochre outline at rest.
 
 ### Guide Steps (signature)
-Each step is a 32px mark column plus body, divided by `rule`. The mark is a 28px circle ringed in `rule-strong` holding the step number. When the step's command has run, the ring disappears, the number fades to 35%, and a red-pen check strokes in over 420ms (stroke-dashoffset), drawn slightly off-centre like a hand mark. Finished steps stay visible; their text drops to `ink-2`. Below the text, a command row: mono command on `sheet` in a `rule`-bordered 6px box with a small quiet "Type it" button.
+Each step is a 30px mark column beside its body, divided by `line`. The mark is a 26px square tile-inset with a 1px `line-strong` ring and a 4px corner, holding the step number in mono 600 12px. When the step's command has run, the mark fills `ok`, the number fades out, and a check strokes in over 420ms in the tile colour. Finished steps stay; their text drops to `ink-2`. Under the text, a command row on `term` (1px `line`, 4px corners, mono 12.5px) with a small "Type it" button. Only the next step to run has an ochre "Type it"; the rest are quiet until hovered.
+
+### Services Tiling
+On the start page the offer is a 2x2 tiling of `tile` tiles inside an 8px-padded `bar` frame with 8px corners, followed by a large primary Email button. In the workspace it shrinks to a dismissible services tile under the guide, with the address in mono and a small primary Contact button.
 
 ### Transfer Toast
-Bottom-centred over the terminal, `sheet` with `rule-strong` border and the floating shadow, rises 8px in over 260ms. A 4px meter on a `rule` track fills `blue` while moving, `ok` when done; an error swaps the meter for a `pen` border.
+Bottom-centred over the terminal: a `tile` with a `line-strong` border and the floating shadow, rising 8px over 260ms. A 4px meter on a `line` track fills `accent` while moving and `ok` when done; an error replaces the meter with an `err` border.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep blue for the top bar and pressable things: buttons, links, tabs, selected options, focus rings.
-- **Do** use `pen` only for marks of state: checks, progress, errors, blocked.
-- **Do** separate surfaces with 1px `rule` lines and the `paper`/`sheet` tone step before reaching for anything else.
-- **Do** keep finished steps visible and checked; completed work never disappears.
+- **Do** keep ochre to pressables, the next guide step and the focused tile's frame.
+- **Do** separate tiles with the 8px ground gap, and group related tiles inside a `bar` frame padded by the same gap.
+- **Do** give workspace tiles a 2px border so the focus frame swaps colour without moving anything.
+- **Do** open every tile that names itself with a 32px mono, lowercase tile head.
+- **Do** keep the status bar near-black teal in both schemes, and use its modules (divided by `bar-line` verticals) for live readouts.
 - **Do** put changing numbers in fixed-width cells with tabular numerals.
-- **Do** derive every dark-mode value from the same role (lift blue and pen; ink-wash ground), and keep the xterm palette in step with the role tokens.
+- **Do** keep finished guide steps visible and filled sage.
+- **Do** derive every dark-mode value from the same role and keep the xterm palette in step with the role tokens.
 - **Do** honour `prefers-reduced-motion` by collapsing animations and transitions to 1ms.
-- **Do** keep touch targets at 44px on the touch-key row.
+- **Do** keep touch keys at 44px.
 
 ### Don't:
-- **Don't** make the product a black page with a neon accent and a terminal in a floating window.
-- **Don't** colour headings or decorations blue to add emphasis.
-- **Don't** use `pen` red for decoration, emphasis or the printed margin.
-- **Don't** put shadows on resting surfaces; the floating-layer shadow is for popover, toast and overlay drawer only.
-- **Don't** load web fonts; the first prompt's load time outranks a custom face.
-- **Don't** set prose, labels or headings in monospace.
+- **Don't** build a fake desktop: no draggable, overlapping or title-barred windows.
+- **Don't** drop the ground to neutral black or swap ochre for a saturated neon.
+- **Don't** use ochre on headings, section rules, dividers, resting decorations or non-pressable hover states.
+- **Don't** put shadows on resting tiles; the floating-layer shadow is for toast, popover, dialog, consent card and the overlay column only.
+- **Don't** use pills or circles; corners stay between 2px and 8px.
+- **Don't** use text glyphs as icons; icons are inline SVG strokes.
+- **Don't** load web fonts.
+- **Don't** set prose, headings or buttons in mono.

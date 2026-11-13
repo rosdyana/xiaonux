@@ -2,22 +2,22 @@
 version: 1
 slug: "web-index-html"
 primary_target: "web/index.html"
-related_targets: ["web/src/main.ts","web/src/style.css"]
+related_targets: ["web/src/main.ts","web/src/style.css","web/src/i18n/en.ts"]
 ---
 
 # xiaonux web app (start view + workspace)
 
-Mode: Operate (the start view is the workspace's front door, not a marketing page).
-Audience/job: students practising Unix; security learners inspecting a file safely. Task: get a prompt, follow a guide, move files in/out, decide on network.
-Constraints: no framework, no web fonts (first-load weight), xterm.js terminal, light/dark, 390 px, keyboard-first.
-Memorable moment: a guide step gets a hand-drawn red-pen check when its command has run.
-Unresolved: production domain; helper hosting URL.
+Mode: Operate for the workspace and the start view's cover; the start page's "Your own xiaonux" section is Persuade (services offer, contact@xiaonux.dev).
+Audience/job: students practising Unix; security learners inspecting a file safely; schools, course authors and security teams who may buy custom images, self-hosting/embedding, workshops, or support. Task: get a prompt, follow a guide, move files in/out, decide on network; for buyers, understand the offer and email.
+Constraints: no framework, no web fonts (first-load weight), xterm.js terminal, light/dark, 390 px, keyboard-first. No prices, customers or testimonials (none exist).
+Memorable moment: whichever tile holds the keyboard wears the ochre frame; Ctrl+Shift+G moves it between terminal and guide.
+Unresolved: helper hosting URL; translations of the svc.* strings (other locales fall back to English).
 
 ## Direction contract
 
-THESIS: xiaonux is a lab session with a worksheet beside the machine. Refuses the category default of a black page with a neon accent and a floating terminal "window".
-OWN-WORLD: university lab worksheet. Bond-white paper ground, cover-stock blue shell (top bar, primary buttons; blue only on things you can press), graphite text, faint blue ruling under guide steps, teacher's red pen reserved for state marks (checks, warnings). Dark: blue-black ink-wash ground, same blue lifted, pen red lifted. System sans; mono only for commands.
-STORY: visitor sees what it is in one line, presses Start (or a "Try it" for their purpose), lands in the shell with a worksheet drawer; steps type into the shell and get checked off; network and safety are plain answers, not warnings.
-FIRST VIEWPORT: start view: left column value line at display size, Start button, live "prompt in N s" measure; right: three worksheet rows (Learn Unix / Python & packages / Security lab) as ruled rows with "Try it". Facts row under. Workspace: blue top bar (name, status, network chip, Upload, Download, Reset, Guide toggle), terminal fills the rest, worksheet drawer at right (Guides / Network / Safety tabs).
-FORM: lab worksheet, candidate 4 of 7 on my list; raises: action colour only where something can be pressed (from warm-consumer-app); completed steps stay visible and checked, nothing disappears (from ticket wallet); status fields in fixed cells with tabular numerals that change without moving the layout (from split-flap). seed:8c6f32fa877b0e46
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+THESIS: xiaonux is a tiled Linux workstation, set up the way Linux people set up their own. Refuses both the fake desktop with draggable windows and the near-black page with one neon accent.
+OWN-WORLD: i3/sway tiling setups. Deep teal ground with gapped tiles (dark), sand ground with paper tiles (light); a thin near-black status bar in both; sand text; ochre only on pressable primaries, the next guide step, and the focused tile; sage for done/connected, coral for errors. System sans for prose and titles; mono for the status bar, tile heads, labels that are data, and commands.
+STORY: start page opens with the same status bar the machine wears, the headline, Start, and the guides as a tile; below, tiles for what's on the machine, use cases, nested tiles for how it works, safety, then the services offer as a gapped 2x2 tiling inside a dark frame with an Email button. Workspace: status bar (name, status, network module, MIPS, Upload, Download, Reset, Guide), terminal tile, right column with the guide tile (guides/network/safety tabs) and a dismissible services tile.
+FIRST VIEWPORT: matches .impeccable/mocks/decision/tiling.html (chosen sketch).
+FORM: Tiling Workstation, grounded candidate chosen over the rolled Silicon Datasheet, Debian Desktop pick, and cloud-shell canon. seed:ae4c70c96f12932f
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md.

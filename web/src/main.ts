@@ -92,16 +92,16 @@ onLocaleChange(renderSheetProgress);
 const dark = matchMedia('(prefers-color-scheme: dark)');
 const THEMES: Record<'light' | 'dark', ITheme> = {
   light: {
-    background: '#fdfeff', foreground: '#1b2430', cursor: '#1d4f91', cursorAccent: '#fdfeff',
-    selectionBackground: '#c9dbf3',
-    black: '#1b2430', red: '#b42a25', green: '#1d7438', yellow: '#855f00', blue: '#1d4f91', magenta: '#8a3ea8', cyan: '#0e6b76', white: '#5f6b79',
-    brightBlack: '#5f6b79', brightRed: '#c8302b', brightGreen: '#23843f', brightYellow: '#946b00', brightBlue: '#2a62ad', brightMagenta: '#9a48bb', brightCyan: '#137a86', brightWhite: '#2b3542',
+    background: '#fbf8f0', foreground: '#1d3036', cursor: '#a5650a', cursorAccent: '#fbf8f0',
+    selectionBackground: '#ecd9b0',
+    black: '#1d3036', red: '#b2372a', green: '#3d7a35', yellow: '#8a5a00', blue: '#1f6a85', magenta: '#8a3f7a', cyan: '#18727a', white: '#5c6c6e',
+    brightBlack: '#5c6c6e', brightRed: '#c4402f', brightGreen: '#468a3d', brightYellow: '#9a6500', brightBlue: '#257a98', brightMagenta: '#9a4a89', brightCyan: '#1d828b', brightWhite: '#2a3f45',
   },
   dark: {
-    background: '#0c131c', foreground: '#dbe3ec', cursor: '#7fb0f0', cursorAccent: '#0c131c',
-    selectionBackground: '#24426b',
-    black: '#0c131c', red: '#ff7a6e', green: '#6fcf8a', yellow: '#e7c160', blue: '#7fb0f0', magenta: '#d39cf0', cyan: '#5fd0dc', white: '#b9c4d1',
-    brightBlack: '#6c7a8b', brightRed: '#ff9b91', brightGreen: '#8fe0a6', brightYellow: '#f2d27f', brightBlue: '#a2c7f6', brightMagenta: '#e2b8f6', brightCyan: '#86e0e8', brightWhite: '#f1f5f9',
+    background: '#12262b', foreground: '#e9e2d0', cursor: '#e3a43b', cursorAccent: '#12262b',
+    selectionBackground: '#2f5058',
+    black: '#12262b', red: '#e46a5b', green: '#8db580', yellow: '#e3a43b', blue: '#7fb7c9', magenta: '#d39ac0', cyan: '#7cc7bd', white: '#b8c1b8',
+    brightBlack: '#6f8a88', brightRed: '#f08a7c', brightGreen: '#a7cc9a', brightYellow: '#f0bd62', brightBlue: '#9fcbd9', brightMagenta: '#e2b4d2', brightCyan: '#9cd9d0', brightWhite: '#f5efe1',
   },
 };
 const term = new Terminal({
@@ -307,6 +307,10 @@ drawer.addEventListener('keydown', (e) => {
   term.focus();
 });
 setDrawer(store.get(DRAWER_KEY) === null ? wide.matches : store.get(DRAWER_KEY) === '1' && wide.matches);
+// The services tile under the guide can be hidden; it stays hidden in this browser.
+const SVC_KEY = 'xiaonux.svc';
+$('svc-tile').hidden = store.get(SVC_KEY) === '0';
+$('svc-hide').addEventListener('click', () => { $('svc-tile').hidden = true; store.set(SVC_KEY, '0'); });
 
 // ---------------------------------------------------------------- boot/status
 let tBoot = 0;
@@ -485,7 +489,7 @@ function onWorker(m: FromWorker) {
       if (marks.prompt === undefined) setStatus('status.downloading', { mb: (bytesFetched / 2 ** 20).toFixed(1) });
       break;
     case 'stats':
-      statsEl.textContent = `${m.mips} MIPS`;
+      statsEl.textContent = m.mips > 0 ? `${m.mips} MIPS` : t('stats.idle');
       statsEl.title = t('stats.title', { heap: m.heapMb, mb: (bytesFetched / 2 ** 20).toFixed(1) });
       if (TEST_HOOKS) (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats, jit: m.jit };
       break;
