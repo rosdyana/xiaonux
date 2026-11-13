@@ -222,7 +222,7 @@ async fn respond(sock: &mut TcpStream, status: &str, origin: Option<&str>, body:
 async fn handle(mut sock: TcpStream, cfg: Arc<Config>) -> Option<()> {
     let req = read_request(&mut sock).await?;
     let origin = req.headers.get("origin").cloned();
-    let origin_ok = origin.as_deref().map_or(false, |o| cfg.origins.iter().any(|a| a == o));
+    let origin_ok = origin.as_deref().is_some_and(|o| cfg.origins.iter().any(|a| a == o));
     if !origin_ok {
         respond(&mut sock, "403 Forbidden", None, r#"{"error":"origin not allowed"}"#).await;
         return None;
@@ -279,7 +279,7 @@ fn is_local(ip: &IpAddr) -> bool {
             a.is_loopback() || a.is_unspecified() || a.is_multicast()
                 || (s[0] & 0xfe00) == 0xfc00 // unique local
                 || (s[0] & 0xffc0) == 0xfe80 // link local
-                || a.to_ipv4_mapped().map_or(false, |v4| is_local(&IpAddr::V4(v4)))
+                || a.to_ipv4_mapped().is_some_and(|v4| is_local(&IpAddr::V4(v4)))
         }
     }
 }

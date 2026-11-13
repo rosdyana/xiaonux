@@ -1,0 +1,67 @@
+# Checks on every push and pull request: the page builds, the relay
+# typechecks, the network helper compiles, passes clippy and its tests, and the
+# native C unit test for the emulator's disk-range check passes.
+# The emulator build, guest image and browser tests need local toolchains
+# (Emscripten, a Linux VM, a built dist/vm) and aren't run here.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm build
+        working-directory: web
+
+  relay:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: relay/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: relay
+      - run: pnpm typecheck
+        working-directory: relay
+
+  helper:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy
+      - run: cargo clippy --locked -- -D warnings
+        working-directory: helper
+      - run: cargo test --locked
+        working-directory: helper
+
+  emu-native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/wasm -o build/blk_range_test emu/wasm/test/blk_range_test.c && ./build/blk_range_test
