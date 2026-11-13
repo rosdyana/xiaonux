@@ -23,24 +23,45 @@ typedef struct XSnap {
     int saving;          /* 1 = save, 0 = load */
     uint8_t *buf;
     size_t len, cap, pos;
-    int error;           /* set on overrun / mismatch when loading */
+    int error;           /* set on overrun / mismatch when loading, or out of memory when saving */
 } XSnap;
 
-static inline void xsnap_reserve(XSnap *sn, size_t n)
+#ifndef XSNAP_REALLOC
+#define XSNAP_REALLOC realloc   /* tests override this to simulate OOM */
+#endif
+
+/* Returns 0 if n more bytes fit, -1 (and sets error) if memory ran out. */
+static inline int xsnap_reserve(XSnap *sn, size_t n)
 {
+    if (sn->error)
+        return -1;
+    if (n > SIZE_MAX - sn->len) {
+        sn->error = 1;
+        return -1;
+    }
     if (sn->len + n > sn->cap) {
         size_t cap = sn->cap ? sn->cap : (1 << 20);
-        while (cap < sn->len + n)
+        uint8_t *nb;
+        while (cap < sn->len + n) {
+            if (cap > SIZE_MAX / 2) { sn->error = 1; return -1; }
             cap *= 2;
-        sn->buf = realloc(sn->buf, cap);
+        }
+        nb = XSNAP_REALLOC(sn->buf, cap);
+        if (!nb) {
+            sn->error = 1;     /* keep the old buffer: the caller frees it */
+            return -1;
+        }
+        sn->buf = nb;
         sn->cap = cap;
     }
+    return 0;
 }
 
 static inline void xsnap_bytes(XSnap *sn, void *p, size_t n)
 {
     if (sn->saving) {
-        xsnap_reserve(sn, n);
+        if (xsnap_reserve(sn, n) < 0)
+            return;
         memcpy(sn->buf + sn->len, p, n);
         sn->len += n;
     } else {
