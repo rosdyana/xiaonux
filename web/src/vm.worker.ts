@@ -355,30 +355,63 @@ async function afterRestore() {
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_AFTER_IDLE_MS = 5000;
 
+// A guest that keeps writing never goes idle, so also save when the oldest
+// unsaved change is this old.
+const SAVE_MAX_WAIT_MS = 60_000;
+let unsavedSince = 0; // performance.now() of the first write after the last save, 0 = none
+let forcedSaveQueued = false;
+
+// Called from disk.onWrite, i.e. synchronously from C in the middle of a guest
+// disk request, so it must never save directly: the forced save is deferred
+// with setTimeout so it runs between emulator slices. A successful save resets
+// unsavedSince, so with a continuously writing guest the forced save happens
+// about once per SAVE_MAX_WAIT_MS, not on every write.
 function scheduleSave() {
+  const now = performance.now();
+  if (unsavedSince === 0) unsavedSince = now;
   if (saveTimer !== null) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
     saveNow('idle');
   }, SAVE_AFTER_IDLE_MS);
+  if (now - unsavedSince >= SAVE_MAX_WAIT_MS && !forcedSaveQueued) {
+    forcedSaveQueued = true;
+    setTimeout(() => {
+      forcedSaveQueued = false;
+      saveNow('max-wait');
+    }, 0);
+  }
 }
 
 // Runs between slices, so the guest is paused. A save is refused while a
 // disk request is in flight; retry shortly.
 function saveNow(reason: string, attempt = 0) {
-  if (!vm || !ready || !disk || !disk.canSaveSnapshots) return;
-  if (!disk.hasUserData || !disk.changedSinceSave) return;
+  if (!vm || !ready || !disk || !disk.canSaveSnapshots) {
+    unsavedSince = 0;
+    return;
+  }
+  if (!disk.hasUserData || !disk.changedSinceSave) {
+    unsavedSince = 0;
+    return;
+  }
   const t = performance.now();
   const lenPtr = vm._malloc(4);
   const p = vm._vm_snapshot_save(lenPtr);
   const len = new Uint32Array(vm.HEAPU8.buffer, lenPtr, 1)[0];
   vm._free(lenPtr);
   if (!p) {
-    if (attempt < 40) setTimeout(() => saveNow(reason, attempt + 1), 25);
+    if (attempt < 40) {
+      setTimeout(() => saveNow(reason, attempt + 1), 25);
+    } else {
+      // Don't give up silently: queue another attempt.
+      post({ type: 'log', message: 'save postponed: disk busy' });
+      scheduleSave();
+    }
     return;
   }
   disk.saveUserSnapshot(vm.HEAPU8.subarray(p, p + len));
   vm._free(p);
+  unsavedSince = 0;
   post({ type: 'saved', reason, ms: Math.round(performance.now() - t), bytes: len });
 }
 
