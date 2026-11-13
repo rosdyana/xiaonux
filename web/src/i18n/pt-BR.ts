@@ -117,7 +117,7 @@ const ptBR: Locale = {
     'oss.title': 'Código aberto',
     'oss.note': 'Apache-2.0. Leia, rode, modifique.',
     'oss.p1': 'O xiaonux é gratuito e de código aberto. O emulador, a página e a geração da imagem estão todos num só repositório.',
-    'oss.p2': 'Os guias são pequenos arquivos JSON. Se você dá aula com ele, <a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">escreva um guia</a> para sua turma.',
+    'oss.p2': 'Os guias são pequenos arquivos JSON. Se você dá aula com ele, <a href="https://github.com/rosdyana/xiaonux/blob/main/CONTRIBUTING.md#contributing-lessons">escreva um guia</a> para sua turma.',
     'foot.license': 'Código aberto, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a>',
     'foot.licenses': 'Licenças',
     'foot.security': 'Notas de segurança',

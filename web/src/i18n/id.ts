@@ -117,7 +117,7 @@ const id: Locale = {
     'oss.title': 'Open source',
     'oss.note': 'Apache-2.0. Baca, jalankan, ubah.',
     'oss.p1': 'xiaonux gratis dan open source. Emulator, halaman, dan build image semuanya ada di satu repositori.',
-    'oss.p2': 'Panduan hanyalah file JSON kecil. Jika Anda mengajar dengannya, <a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">tulis panduan</a> untuk kelas Anda.',
+    'oss.p2': 'Panduan hanyalah file JSON kecil. Jika Anda mengajar dengannya, <a href="https://github.com/rosdyana/xiaonux/blob/main/CONTRIBUTING.md#contributing-lessons">tulis panduan</a> untuk kelas Anda.',
     'foot.license': 'Open source, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a>',
     'foot.licenses': 'Lisensi',
     'foot.security': 'Catatan keamanan',

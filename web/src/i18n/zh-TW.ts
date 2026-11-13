@@ -117,7 +117,7 @@ const zhTW: Locale = {
     'oss.title': '開放原始碼',
     'oss.note': 'Apache-2.0。可以閱讀、執行、修改。',
     'oss.p1': 'xiaonux 是免費的開放原始碼。模擬器、網頁和映像檔建置都在同一個儲存庫裡。',
-    'oss.p2': '導覽只是小小的 JSON 檔。如果你用它教課，可以為你的班級<a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">寫一份導覽</a>。',
+    'oss.p2': '導覽只是小小的 JSON 檔。如果你用它教課，可以為你的班級<a href="https://github.com/rosdyana/xiaonux/blob/main/CONTRIBUTING.md#contributing-lessons">寫一份導覽</a>。',
     'foot.license': '開放原始碼，<a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a>',
     'foot.licenses': '授權條款',
     'foot.security': '安全說明',

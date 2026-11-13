@@ -35,7 +35,7 @@ The machine runs entirely on the visitor's own computer, in the tab: emulated RI
 - Debian 13 with Python 3, pip with an offline wheel index (numpy, pandas, cryptography, pillow, ...), and security tools: file, binutils-multiarch, xxd, strace, ltrace, gdb, yara, binwalk, hexedit, jq, tcpdump, nmap, netcat, python3-pefile, 7zip.
 - x86, ARM and Windows executables do not run. It is not a hardened malware lab: with the helper on, a sample can reach the internet from the visitor's IP.
 - Clean-room: nothing from ClairEmu may be copied or adapted.
-- Production domain is undecided.
+- Production domain: https://xiaonux.dev
 
 ## Brand Commitments
 
@@ -46,7 +46,7 @@ The machine runs entirely on the visitor's own computer, in the tab: emulated RI
 
 ## Evidence on Hand
 
-- Benchmarks in docs/benchmarks.md (warm prompt 0.37–0.46 s, cold 1.9 s at 100 Mbit, first download 13.8 MB).
+- Benchmarks (warm prompt 0.37–0.46 s, cold 1.9 s at 100 Mbit, first download 13.8 MB).
 - No testimonials, users, or press exist; do not invent them.
 
 ## Product Principles

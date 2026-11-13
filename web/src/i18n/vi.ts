@@ -117,7 +117,7 @@ const vi: Locale = {
     'oss.title': 'Mã nguồn mở',
     'oss.note': 'Apache-2.0. Đọc, chạy, sửa tùy ý.',
     'oss.p1': 'xiaonux miễn phí và là mã nguồn mở. Trình giả lập, trang web và bản dựng image đều nằm trong một kho mã.',
-    'oss.p2': 'Hướng dẫn chỉ là các tệp JSON nhỏ. Nếu bạn dùng nó để dạy, hãy <a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">viết một hướng dẫn</a> cho lớp của bạn.',
+    'oss.p2': 'Hướng dẫn chỉ là các tệp JSON nhỏ. Nếu bạn dùng nó để dạy, hãy <a href="https://github.com/rosdyana/xiaonux/blob/main/CONTRIBUTING.md#contributing-lessons">viết một hướng dẫn</a> cho lớp của bạn.',
     'foot.license': 'Mã nguồn mở, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a>',
     'foot.licenses': 'Giấy phép',
     'foot.security': 'Ghi chú bảo mật',

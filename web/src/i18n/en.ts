@@ -123,7 +123,7 @@ const strings = {
   'oss.title': 'Open source',
   'oss.note': 'Apache-2.0. Read it, run it, change it.',
   'oss.p1': 'xiaonux is free and open source. The emulator, the page and the image build are all in one repository.',
-  'oss.p2': 'Guides are small JSON files. If you teach with it, <a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">write a guide</a> for your class.', // (html)
+  'oss.p2': 'Guides are small JSON files. If you teach with it, <a href="https://github.com/rosdyana/xiaonux/blob/main/CONTRIBUTING.md#contributing-lessons">write a guide</a> for your class.', // (html)
   'foot.license': 'Open source, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a>', // (html)
   'foot.licenses': 'Licenses',
   'foot.security': 'Security notes',

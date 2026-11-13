@@ -28,7 +28,7 @@ browser tab
         └── or a small Cloudflare Worker relay (relay/)
 ```
 
-Measured in Chrome on an M2 MacBook (details in [docs/benchmarks.md](docs/benchmarks.md)):
+Measured in Chrome on an M2 MacBook:
 
 | | |
 |---|---|
@@ -52,7 +52,7 @@ make jit-bundle       # (with serve running) ship pre-translated hot code
 make licenses         # dist/vm/licenses.json for the Licenses page
 ```
 
-Each target is described in the [Makefile](Makefile). The design and measurements of each phase are in [docs/](docs/).
+Each target is described in the [Makefile](Makefile).
 
 Repository layout:
 
