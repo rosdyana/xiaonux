@@ -93,7 +93,7 @@ fn parse_args() -> Config {
     }
     if c.origins.is_empty() {
         // The published page can be baked in at build time: XIAONUX_ORIGIN=https://… cargo build
-        if let Some(o) = option_env!("XIAONUX_ORIGIN") {
+        if let Some(o) = option_env!("XIAONUX_ORIGIN").filter(|o| !o.is_empty()) {
             c.origins.push(o.trim_end_matches('/').to_string());
         }
         c.origins.push("http://localhost:5180".into());

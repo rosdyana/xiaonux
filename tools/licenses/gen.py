@@ -201,7 +201,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(REPO, "dist", "vm", "licenses.json"))
     ap.add_argument("--helper-notices", help="also write the helper's THIRD-PARTY-NOTICES.txt here")
+    ap.add_argument("--helper-only", action="store_true",
+                    help="only write --helper-notices (no build outputs needed; used by CI)")
     a = ap.parse_args()
+    if a.helper_only:
+        if not a.helper_notices:
+            ap.error("--helper-only needs --helper-notices")
+        with open(a.helper_notices, "w") as f:
+            f.write(notices_txt(helper_crates()))
+        print(a.helper_notices)
+        return
     v = versions()
     own = {"id": "xiaonux", "title": "xiaonux", "items": [
         {"name": "xiaonux", "license": "Apache-2.0", "url": "https://github.com/rosdyana/xiaonux",

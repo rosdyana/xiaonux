@@ -26,8 +26,21 @@ service and never starts by itself; run it again next time.
   with `-v`, never content.
 
 ## Building releases
-`helper/release.sh` builds every platform from macOS (zig + cargo-zigbuild for
-Linux/Windows, `lipo` for macOS, `wixl` in the builder VM for the `.msi`) into
-`dist/vm/helper/`, with `SHA256SUMS` and `latest.json` (which the page reads to
-offer the right download). `XIAONUX_ORIGIN=https://…` bakes the published
-page in as the default origin.
+Releases are built by GitHub Actions (`.github/workflows/helper-release.yml`):
+bump `version` in `Cargo.toml`, then push a matching tag.
+
+```sh
+git tag helper-v0.1.1 && git push origin helper-v0.1.1
+```
+
+The workflow builds Linux (static musl, x86_64 + ARM64), Windows (`.exe` and
+`.msi`) and macOS (universal) binaries and publishes them as a GitHub release
+with `SHA256SUMS` and `latest.json`. Set the repository variable
+`XIAONUX_ORIGIN` (e.g. `https://xiaonux.dev`) to bake the published page in
+as the default origin. Then `make helper-fetch` copies `latest.json` and
+`SHA256SUMS` into `dist/vm/helper/`, and the page links to the release for
+the downloads.
+
+`helper/release.sh` still builds everything locally from macOS (zig +
+cargo-zigbuild, `lipo`, `wixl` in the builder VM) into `dist/vm/helper/`, with
+the binaries served by the page itself.

@@ -4,5 +4,5 @@ compatibility_date = "2026-10-01"
 
 [vars]
 ALLOWED_HOSTS = "pypi.org,files.pythonhosted.org,deb.debian.org,security.debian.org,github.com,objects.githubusercontent.com,codeload.github.com"
-ALLOWED_ORIGINS = "http://localhost:5180"
+ALLOWED_ORIGINS = "https://xiaonux.dev,https://www.xiaonux.dev,https://xiaonux.pages.dev,http://localhost:5180"
 # Secrets (wrangler secret put): SESSION_KEY, TURNSTILE_SECRET

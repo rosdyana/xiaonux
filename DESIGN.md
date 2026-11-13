@@ -263,7 +263,7 @@ Two modes share one sheet.
 
 **Start view:** a centred column, max 1120px, padded 24/32px. A head row (wordmark left, two links right), then a two-column grid (1.05fr / 1fr, 56px gap, vertically centred): value line, lede and Start action on the left, the three-row worksheet on the right. A facts row under a 1px rule, then a footer of links. Below 860px the grid stacks (32px gap); below 640px padding drops to 16px, the Start button goes full width, and the worksheet's margin narrows (numbers column 28px, margin rule at 41px).
 
-**Workspace:** full viewport height (`100dvh`). A 48px blue bar; under it the terminal fills everything left of the drawer. The drawer is 420px (max 38vw) and animates its width open/closed. Below 960px the drawer overlays the terminal from the right (full width up to 420px) with the floating shadow, and the MIPS readout hides. Below 640px the bar drops the wordmark and button labels (icons only), and the status cell ellipsises. On coarse pointers a 44px touch-key row appears under the terminal, its right edge faded to show it scrolls.
+**Workspace:** full viewport height (`100dvh`). A 48px blue bar; under it the terminal fills everything left of the drawer. The drawer is 420px (max 38vw) and animates its width open/closed. Below 960px the drawer overlays the terminal from the right (full width up to 420px) with the floating shadow, and the MIPS readout hides. Below 640px the bar shrinks the wordmark to its logo tile and drops button labels (icons only), and the status cell ellipsises. The wordmark is the Home link everywhere: in the workspace it returns to the start view through a `#machine` history entry (the browser's Back does the same), the machine keeps running, and the start view's Start button becomes "Return to Linux". The language picker lives in the start head, the drawer's tab row, and the Licenses head, never in the bar. On coarse pointers a 44px touch-key row appears under the terminal, its right edge faded to show it scrolls.
 
 **Document view (Licenses):** centred column, max 1040px, same head row as the start view, generous section spacing (48px between groups), tables in a bordered scroll wrapper.
 
@@ -309,7 +309,9 @@ Plain and firm: a solid block or a ruled outline, no gradients, no lift.
 - **Option cards (radio):** whole card is the label; checked card gets a `blue` border and `blue-wash` fill; native radios tinted with `accent-color: blue`.
 
 ### Navigation
-- **Top bar:** `bar` fill, 48px min height; wordmark, live status cell, network chip, spacer, MIPS readout, then icon+label bar buttons (Upload, Download, Reset, Guide). Bar buttons are transparent, hover white 12%, expanded state white 16% with a faint border.
+- **Reset dialog:** a modal `<dialog>` on `sheet` with the title underlined in `pen`; "Keep my files" (quiet, focused first) and "Delete my files" (`pen` fill). Escape keeps. Reset also clears guide checks.
+- **Terminal focus:** Tab stays in the shell; Ctrl+Shift+G moves focus between the terminal and the drawer (hint under the Guide picker, hidden on touch).
+- **Top bar:** `bar` fill, 48px min height; wordmark (logo tile + name, a Home link), live status cell, network chip, spacer, MIPS readout, then icon+label bar buttons (Upload, Download, Reset, Guide). Bar buttons are transparent, hover white 12%, expanded state white 16% with a faint border.
 - **Drawer tabs:** 600 13.5px `ink-2` text with a 2px transparent underline; selected is `blue` text and `blue` underline sitting on the 1px tab-row rule.
 - **Page head:** wordmark (700 19px, `ink`) left, plain underlined links right.
 

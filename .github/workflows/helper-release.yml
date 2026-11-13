@@ -1,0 +1,169 @@
+# Build xiaonux-net for every platform and publish a GitHub release.
+#
+# Trigger: push a tag helper-vX.Y.Z that matches helper/Cargo.toml's version,
+#   git tag helper-v0.1.0 && git push origin helper-v0.1.0
+# or run it by hand from the Actions tab with that tag.
+#
+# The release holds the binaries plus SHA256SUMS and latest.json. latest.json
+# has a "base" URL pointing at the release, so the page links to GitHub for the
+# downloads. `make helper-fetch` copies those two small files into
+# dist/vm/helper/ before a deploy.
+#
+# Repository variable XIAONUX_ORIGIN (Settings → Secrets and variables →
+# Actions → Variables), e.g. https://xiaonux.dev, bakes the published page in
+# as the helper's default origin. localhost:5180 always stays allowed.
+name: helper release
+
+on:
+  push:
+    tags: ['helper-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, helper-vX.Y.Z (must match helper/Cargo.toml)'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  XIAONUX_ORIGIN: ${{ vars.XIAONUX_ORIGIN }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Tag matches Cargo.toml
+        run: |
+          version=$(grep -m1 '^version' helper/Cargo.toml | cut -d'"' -f2)
+          if [ "$TAG" != "helper-v$version" ]; then
+            echo "::error::tag $TAG does not match helper/Cargo.toml version $version (expected helper-v$version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  linux-windows:
+    needs: check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.13.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - name: Rust targets
+        run: rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-gnu
+      - name: Build
+        working-directory: helper
+        run: |
+          for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-gnu; do
+            cargo zigbuild --release --locked --target "$t"
+          done
+          mkdir -p ../out
+          cp target/x86_64-unknown-linux-musl/release/xiaonux-net ../out/xiaonux-net-linux-x86_64
+          cp target/aarch64-unknown-linux-musl/release/xiaonux-net ../out/xiaonux-net-linux-aarch64
+          cp target/x86_64-pc-windows-gnu/release/xiaonux-net.exe ../out/xiaonux-net-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-linux-windows
+          path: out/
+          if-no-files-found: error
+
+  macos:
+    needs: check
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal binary
+        working-directory: helper
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          mkdir -p ../out
+          lipo -create -output ../out/xiaonux-net-macos-universal \
+            target/aarch64-apple-darwin/release/xiaonux-net target/x86_64-apple-darwin/release/xiaonux-net
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-macos
+          path: out/
+          if-no-files-found: error
+
+  release:
+    needs: [check, linux-windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bin-*
+          path: bin
+          merge-multiple: true
+      - name: Install wixl
+        run: sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wixl zip
+      - name: Package
+        run: |
+          set -euo pipefail
+          OUT=$PWD/release; mkdir -p "$OUT" build
+          chmod +x bin/xiaonux-net-linux-* bin/xiaonux-net-macos-universal
+          NOTICES=$PWD/build/THIRD-PARTY-NOTICES.txt
+          python3 tools/licenses/gen.py --helper-only --helper-notices "$NOTICES"
+
+          docs() {
+            cat > "$1/README.txt" <<TXT
+          xiaonux-net $VERSION — lets the xiaonux browser VM use this computer's internet.
+          Run it, keep the window open, and the pairing link opens in your browser.
+          It only listens on 127.0.0.1, only for the xiaonux page, needs the pairing token,
+          and refuses your local network (LAN/router) unless started with --allow-lan.
+          Options: xiaonux-net --help
+          TXT
+            cp LICENSE "$1/LICENSE.txt"; cp "$NOTICES" "$1/THIRD-PARTY-NOTICES.txt"
+          }
+          FILES="xiaonux-net README.txt LICENSE.txt THIRD-PARTY-NOTICES.txt"
+
+          for arch in x86_64 aarch64; do
+            d=$(mktemp -d); cp "bin/xiaonux-net-linux-$arch" "$d/xiaonux-net"; docs "$d"
+            tar --owner=0 --group=0 --numeric-owner -C "$d" -czf "$OUT/xiaonux-net-$VERSION-linux-$arch.tar.gz" $FILES
+          done
+
+          d=$(mktemp -d); cp bin/xiaonux-net-macos-universal "$d/xiaonux-net"; docs "$d"
+          (cd "$d" && zip -q -X "$OUT/xiaonux-net-$VERSION-macos-universal.zip" $FILES)
+
+          cp bin/xiaonux-net-windows-x86_64.exe "$OUT/xiaonux-net-$VERSION-windows-x86_64.exe"
+          w=$(mktemp -d)
+          cp bin/xiaonux-net-windows-x86_64.exe "$w/xiaonux-net.exe"
+          cp LICENSE "$w/LICENSE.txt"; cp "$NOTICES" "$w/THIRD-PARTY-NOTICES.txt"
+          sed "s/@VERSION@/$VERSION/" helper/packaging/xiaonux-net.wxs > "$w/xiaonux-net.wxs"
+          (cd "$w" && wixl -a x64 -o xiaonux-net.msi xiaonux-net.wxs)
+          cp "$w/xiaonux-net.msi" "$OUT/xiaonux-net-$VERSION-windows-x86_64.msi"
+
+          (cd "$OUT" && sha256sum xiaonux-net-* > SHA256SUMS)
+          python3 - "$OUT" "$VERSION" "https://github.com/${{ github.repository }}/releases/download/$TAG/" <<'PY'
+          import json, os, sys
+          out, version, base = sys.argv[1:]
+          files = {n: os.path.getsize(os.path.join(out, n)) for n in sorted(os.listdir(out)) if n.startswith("xiaonux-net-")}
+          with open(os.path.join(out, "latest.json"), "w") as f:
+              json.dump({"version": version, "base": base, "files": files}, f)
+          PY
+          ls -la "$OUT"; cat "$OUT/latest.json"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          origin=${XIAONUX_ORIGIN:-none set; the helper only trusts http://localhost:5180 by default}
+          notes="xiaonux-net $VERSION for Windows, macOS and Linux. Built by GitHub Actions from ${GITHUB_SHA::7}.
+          Default page origin: $origin
+          Check a download against SHA256SUMS. The binaries aren't code-signed yet; see helper/README.md for how to run them."
+          gh release create "$TAG" release/* --title "xiaonux-net $VERSION" --notes "$notes" --target "$GITHUB_SHA"

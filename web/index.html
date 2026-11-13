@@ -13,63 +13,64 @@
     <section id="start" class="start" aria-labelledby="start-title">
       <div class="start-inner">
         <header class="start-head">
-          <span class="wordmark">xiaonux</span>
-          <nav class="start-nav" aria-label="Project">
+          <a class="wordmark" href="./" data-home>xiaonux</a>
+          <nav class="start-nav" aria-label="Project" data-i18n-aria-label="nav.project">
             <a href="https://github.com/rosdyana/xiaonux">GitHub</a>
-            <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md">Is it safe?</a>
+            <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="nav.safe">Is it safe?</a>
+            <select class="lang" data-lang-picker aria-label="Language" data-i18n-aria-label="lang.label"></select>
           </nav>
         </header>
 
         <div class="start-main">
           <div class="start-lede">
-            <h1 id="start-title">Real Debian Linux in your browser. Nothing to install.</h1>
-            <p class="lede-sub">A full Linux machine runs inside this tab, on your computer. Practise the shell, run Python, inspect a suspicious file. Reset it whenever you like.</p>
+            <h1 id="start-title" data-i18n="start.title">Real Debian Linux in your browser. Nothing to install.</h1>
+            <p class="lede-sub" data-i18n="start.sub">A full Linux machine runs inside this tab, on your computer. Practise the shell, run Python, inspect a suspicious file. Reset it whenever you like.</p>
             <div class="start-action">
-              <button id="boot" class="btn btn-primary btn-large" type="button">Start Linux</button>
-              <p id="start-timing" class="timing">First start downloads about 17&nbsp;MB. After that it starts in under a second.</p>
+              <button id="boot" class="btn btn-primary btn-large" type="button" data-i18n="start.boot">Start Linux</button>
+              <p id="start-timing" class="timing" data-i18n-html="start.timing">First start downloads about 17&nbsp;MB. After that it starts in under a second.</p>
             </div>
           </div>
 
           <div class="sheet">
-          <p class="sheet-head"><span>Guides</span><span>Commands typed for you, checked when they run</span></p>
-          <ol class="sheet-rows" aria-label="Start with a guide">
+          <p class="sheet-head"><span data-i18n="sheet.head">Guides</span><span data-i18n="sheet.headNote">Commands typed for you, checked when they run</span></p>
+          <ol class="sheet-rows" aria-label="Start with a guide" data-i18n-aria-label="sheet.label">
             <li class="sheet-row" data-lesson="unix-basics">
               <div>
-                <h2>Learn Unix</h2>
-                <p>Files, pipes, permissions and processes, one command at a time.</p>
+                <h2 data-i18n="card.unix.title">Learn Unix</h2>
+                <p data-i18n="card.unix.desc">Files, pipes, permissions and processes, one command at a time.</p>
               </div>
-              <button class="btn btn-quiet" type="button" data-try="unix-basics">Try it</button>
+              <button class="btn btn-quiet" type="button" data-try="unix-basics" data-i18n="card.try">Try it</button>
             </li>
             <li class="sheet-row" data-lesson="python">
               <div>
-                <h2>Python &amp; packages</h2>
-                <p>Python 3 with pip. numpy, pandas and more install without internet.</p>
+                <h2 data-i18n-html="card.python.title">Python &amp; packages</h2>
+                <p data-i18n="card.python.desc">Python 3 with pip. numpy, pandas and more install without internet.</p>
               </div>
-              <button class="btn btn-quiet" type="button" data-try="python">Try it</button>
+              <button class="btn btn-quiet" type="button" data-try="python" data-i18n="card.try">Try it</button>
             </li>
             <li class="sheet-row" data-lesson="triage">
               <div>
-                <h2>Security lab</h2>
-                <p>Upload a file and take it apart with <code>file</code>, <code>strings</code>, <code>yara</code> and <code>strace</code>.</p>
+                <h2 data-i18n="card.triage.title">Security lab</h2>
+                <p data-i18n-html="card.triage.desc">Upload a file and take it apart with <code>file</code>, <code>strings</code>, <code>yara</code> and <code>strace</code>.</p>
               </div>
-              <button class="btn btn-quiet" type="button" data-try="triage">Try it</button>
+              <button class="btn btn-quiet" type="button" data-try="triage" data-i18n="card.try">Try it</button>
             </li>
           </ol>
           </div>
         </div>
 
-        <ul class="facts" aria-label="How it works">
-          <li>Runs in this tab, not on a server</li>
-          <li>Your files stay in this browser</li>
-          <li>Internet is off unless you turn it on</li>
-          <li>Reset any time</li>
+        <ul class="facts" aria-label="How it works" data-i18n-aria-label="facts.label">
+          <li data-i18n="facts.tab">Runs in this tab, not on a server</li>
+          <li data-i18n="facts.files">Your files stay in this browser</li>
+          <li data-i18n="facts.net">Internet is off unless you turn it on</li>
+          <li data-i18n="facts.reset">Reset any time</li>
         </ul>
 
         <footer class="start-foot">
-          <span>Open source, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a></span>
-          <a href="./licenses.html">Licenses</a>
-          <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md">Security notes</a>
-          <a href="https://github.com/rosdyana/xiaonux">Source on GitHub</a>
+          <span data-i18n-html="foot.license">Open source, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a></span>
+          <a href="./licenses.html" data-i18n="foot.licenses">Licenses</a>
+          <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="foot.security">Security notes</a>
+          <a href="https://github.com/rosdyana/xiaonux" data-i18n="foot.source">Source on GitHub</a>
         </footer>
       </div>
     </section>
@@ -77,71 +78,75 @@
     <!-- Workspace: terminal + worksheet drawer -->
     <div id="workspace" class="workspace" hidden>
       <header class="bar">
-        <span class="wordmark">xiaonux</span>
-        <span id="status" class="status" role="status" aria-live="polite">starting…</span>
-        <button id="netchip" class="chip" type="button" data-state="off" aria-label="Network settings">
+        <a class="wordmark" href="./" data-home title="xiaonux home" data-i18n-title="home.label"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M8 11l6 5-6 5M16 22h8"/></svg><span class="name">xiaonux</span></a>
+        <span id="status" class="status" role="status" aria-live="polite" data-i18n="status.starting">Starting…</span>
+        <button id="netchip" class="chip" type="button" data-state="off" aria-label="Network settings" data-i18n-aria-label="chip.aria">
           <span class="dot" aria-hidden="true"></span><span id="netchip-label">Internet off</span>
         </button>
         <span class="bar-spacer"></span>
         <span id="stats" class="stats" aria-hidden="true"></span>
-        <button id="upload" class="bar-btn" type="button" title="Upload files to /root/uploads">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V3M6 7l4-4 4 4M4 13v3h12v-3"/></svg><span>Upload</span>
+        <button id="upload" class="bar-btn" type="button" title="Upload files to /root/uploads" data-i18n-title="bar.uploadTitle">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 13V3M6 7l4-4 4 4M4 13v3h12v-3"/></svg><span data-i18n="bar.upload">Upload</span>
         </button>
-        <button id="download" class="bar-btn" type="button" title="Download a file from /root" popovertarget="dl-pop">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 13v3h12v-3"/></svg><span>Download</span>
+        <button id="download" class="bar-btn" type="button" title="Download a file from /root" data-i18n-title="bar.downloadTitle" popovertarget="dl-pop">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10M6 9l4 4 4-4M4 13v3h12v-3"/></svg><span data-i18n="bar.download">Download</span>
         </button>
-        <button id="reset" class="bar-btn" type="button" title="Delete all changes and start fresh">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10a6 6 0 1 0 2-4.5M4 3v3.5h3.5"/></svg><span>Reset</span>
+        <button id="reset" class="bar-btn" type="button" title="Delete all changes and start fresh" data-i18n-title="bar.resetTitle">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10a6 6 0 1 0 2-4.5M4 3v3.5h3.5"/></svg><span data-i18n="bar.reset">Reset</span>
         </button>
-        <button id="drawer-toggle" class="bar-btn" type="button" aria-controls="drawer" aria-expanded="true">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM12 4v12"/></svg><span>Guide</span>
+        <button id="drawer-toggle" class="bar-btn" type="button" aria-controls="drawer" aria-expanded="true" aria-keyshortcuts="Control+Shift+G">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM12 4v12"/></svg><span data-i18n="bar.guide">Guide</span>
         </button>
       </header>
 
       <div class="work">
         <main id="term-wrap" class="term-wrap">
           <div id="term"></div>
-          <div id="drop" class="drop" hidden><p>Drop to upload into <code>/root/uploads</code></p></div>
+          <div id="drop" class="drop" hidden><p data-i18n-html="drop">Drop to upload into <code>/root/uploads</code></p></div>
           <div id="transfer" class="transfer" role="status" aria-live="polite" hidden>
             <span id="transfer-label"></span>
             <span class="meter"><span id="transfer-fill"></span></span>
           </div>
         </main>
 
-        <aside id="drawer" class="drawer" aria-label="Worksheet">
-          <div class="tabs" role="tablist" aria-label="Worksheet sections">
-            <button role="tab" id="tab-guides" aria-controls="panel-guides" aria-selected="true">Guides</button>
-            <button role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" tabindex="-1">Network</button>
-            <button role="tab" id="tab-safety" aria-controls="panel-safety" aria-selected="false" tabindex="-1">Safety</button>
+        <aside id="drawer" class="drawer" aria-label="Worksheet" data-i18n-aria-label="drawer.label">
+          <div class="drawer-head">
+          <div class="tabs" role="tablist" aria-label="Worksheet sections" data-i18n-aria-label="tabs.label">
+            <button role="tab" id="tab-guides" aria-controls="panel-guides" aria-selected="true" data-i18n="tab.guides">Guides</button>
+            <button role="tab" id="tab-network" aria-controls="panel-network" aria-selected="false" tabindex="-1" data-i18n="tab.network">Network</button>
+            <button role="tab" id="tab-safety" aria-controls="panel-safety" aria-selected="false" tabindex="-1" data-i18n="tab.safety">Safety</button>
+          </div>
+          <select class="lang lang-drawer" data-lang-picker data-short="1" aria-label="Language" data-i18n-aria-label="lang.label"></select>
           </div>
 
           <section id="panel-guides" class="panel" role="tabpanel" aria-labelledby="tab-guides">
             <label class="field">
-              <span>Guide</span>
+              <span data-i18n="guides.field">Guide</span>
               <select id="lesson-select"></select>
             </label>
+            <p class="hint" data-i18n-html="guides.hint">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> to move between the terminal and this guide.</p>
             <p id="lesson-intro" class="lesson-intro"></p>
             <ol id="lesson-steps" class="steps"></ol>
           </section>
 
           <section id="panel-network" class="panel" role="tabpanel" aria-labelledby="tab-network" hidden>
-            <h2>Internet for the machine</h2>
-            <p>The machine has no internet until you choose a way in. Everything that works offline (the shell, Python, the bundled packages and tools) needs nothing here.</p>
+            <h2 data-i18n="net.title">Internet for the machine</h2>
+            <p data-i18n="net.intro">The machine has no internet until you choose a way in. Everything that works offline (the shell, Python, the bundled packages and tools) needs nothing here.</p>
             <fieldset class="netmodes">
-              <legend>Connection</legend>
-              <label><input type="radio" name="netmode" value="off" checked /> <span><b>Off</b> Nothing leaves this tab.</span></label>
-              <label><input type="radio" name="netmode" value="helper" /> <span><b>This computer</b> Through the small xiaonux-net helper. Fast; any https site.</span></label>
-              <label id="relay-option"><input type="radio" name="netmode" value="relay" /> <span><b>Relay</b> Through our free relay. pip, apt and GitHub only; slower, with a daily limit.</span></label>
+              <legend data-i18n="net.legend">Connection</legend>
+              <label><input type="radio" name="netmode" value="off" checked /> <span data-i18n-html="net.mode.off"><b>Off</b> Nothing leaves this tab.</span></label>
+              <label><input type="radio" name="netmode" value="helper" /> <span data-i18n-html="net.mode.helper"><b>This computer</b> Through the small xiaonux-net helper. Fast; any https site.</span></label>
+              <label id="relay-option"><input type="radio" name="netmode" value="relay" /> <span data-i18n-html="net.mode.relay"><b>Relay</b> Through our free relay. pip, apt and GitHub only; slower, with a daily limit.</span></label>
             </fieldset>
             <p id="netstatus" class="netstatus" role="status"></p>
 
             <div id="helper-help" class="helper">
-              <h3>Get xiaonux-net</h3>
-              <p>It shares your computer's internet with this tab only: web ports 80 and 443, never your local network. Run it, and it opens this page already paired.</p>
+              <h3 data-i18n="helper.title">Get xiaonux-net</h3>
+              <p data-i18n="helper.intro">It shares your computer's internet with this tab only: web ports 80 and 443, never your local network. Run it, and it opens this page already paired.</p>
               <ul id="helper-files" class="files"></ul>
               <div class="startstop">
-                <h4>Start and stop</h4>
-                <dl>
+                <h4 data-i18n="helper.startStop">Start and stop</h4>
+                <dl data-i18n-html="helper.startStopList">
                   <dt>Windows</dt><dd>Start: open <b>xiaonux-net</b> from the Start menu. A window opens; keep it open while you use the machine.</dd>
                   <dt>macOS</dt><dd>Start: unzip, then double-click <b>xiaonux-net</b>. It runs in a Terminal window; keep it open.</dd>
                   <dt>Linux</dt><dd>Start: <code>tar xzf xiaonux-net-*.tar.gz &amp;&amp; ./xiaonux-net</code> in a terminal, and leave it running.</dd>
@@ -149,9 +154,9 @@
                 </dl>
               </div>
               <details id="unsigned" class="unsigned" open>
-                <summary>The helper isn't code-signed yet</summary>
-                <p>Your system will warn the first time. Check the SHA-256 above against the file, then:</p>
-                <dl>
+                <summary data-i18n="helper.unsigned">The helper isn't code-signed yet</summary>
+                <p data-i18n="helper.unsignedIntro">Your system will warn the first time. Check the SHA-256 above against the file, then:</p>
+                <dl data-i18n-html="helper.unsignedList">
                   <dt>Windows</dt><dd>SmartScreen: choose <b>More info</b>, then <b>Run anyway</b>.</dd>
                   <dt>macOS</dt><dd>Right-click the app, choose <b>Open</b>, then <b>Open</b> again. Or run <code>xattr -d com.apple.quarantine xiaonux-net</code>.</dd>
                   <dt>Linux</dt><dd>No warning. If it won't run, make it executable: <code>chmod +x xiaonux-net</code>.</dd>
@@ -160,7 +165,7 @@
             </div>
           </section>
 
-          <section id="panel-safety" class="panel prose" role="tabpanel" aria-labelledby="tab-safety" hidden>
+          <section id="panel-safety" class="panel prose" role="tabpanel" aria-labelledby="tab-safety" hidden data-i18n-html="safety.body">
             <h2>What's isolated</h2>
             <p>Programs in this machine never run on your computer's processor. They run on an emulated RISC-V processor, inside WebAssembly, inside your browser's tab sandbox. The machine can't see your files or devices; it only gets what you upload.</p>
             <h2>What you can do with a suspicious file</h2>
@@ -180,14 +185,14 @@
         </aside>
       </div>
 
-      <div id="keys" class="keys" aria-label="Extra keys">
+      <div id="keys" class="keys" aria-label="Extra keys" data-i18n-aria-label="keys.label">
         <button type="button" data-key="ctrl" aria-pressed="false">Ctrl</button>
         <button type="button" data-key="esc">Esc</button>
         <button type="button" data-key="tab">Tab</button>
-        <button type="button" data-key="up" aria-label="Up"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12l5-5 5 5"/></svg></button>
-        <button type="button" data-key="down" aria-label="Down"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg></button>
-        <button type="button" data-key="left" aria-label="Left"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 5l-5 5 5 5"/></svg></button>
-        <button type="button" data-key="right" aria-label="Right"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg></button>
+        <button type="button" data-key="up" aria-label="Up" data-i18n-aria-label="keys.up"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12l5-5 5 5"/></svg></button>
+        <button type="button" data-key="down" aria-label="Down" data-i18n-aria-label="keys.down"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg></button>
+        <button type="button" data-key="left" aria-label="Left" data-i18n-aria-label="keys.left"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12 5l-5 5 5 5"/></svg></button>
+        <button type="button" data-key="right" aria-label="Right" data-i18n-aria-label="keys.right"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 5l5 5-5 5"/></svg></button>
         <button type="button" data-key="pipe">|</button>
         <button type="button" data-key="tilde">~</button>
       </div>
@@ -195,15 +200,25 @@
       <div id="dl-pop" class="pop" popover>
         <form id="dl-form">
           <label class="field">
-            <span>File to download (under <code>/root</code>)</span>
+            <span data-i18n-html="dl.field">File to download (under <code>/root</code>)</span>
             <input id="dl-path" type="text" spellcheck="false" autocomplete="off" value="/root/" />
           </label>
           <div class="pop-actions">
-            <button class="btn btn-quiet" type="button" popovertarget="dl-pop" popovertargetaction="hide">Cancel</button>
-            <button class="btn btn-primary" type="submit">Download</button>
+            <button class="btn btn-quiet" type="button" popovertarget="dl-pop" popovertargetaction="hide" data-i18n="dl.cancel">Cancel</button>
+            <button class="btn btn-primary" type="submit" data-i18n="dl.submit">Download</button>
           </div>
         </form>
       </div>
+      <dialog id="reset-dlg" class="dlg" aria-labelledby="reset-title" aria-describedby="reset-body">
+        <form method="dialog">
+          <h2 id="reset-title" data-i18n="reset.title">Reset the machine?</h2>
+          <p id="reset-body"><span data-i18n="reset.confirm">This deletes every file and change you made in it, including uploads.</span><span class="reset-more" data-i18n="reset.guides">Your guide checks are cleared too.</span></p>
+          <div class="pop-actions">
+            <button class="btn btn-quiet" value="keep" autofocus data-i18n="reset.keep">Keep my files</button>
+            <button class="btn btn-danger" value="reset" data-i18n="reset.delete">Delete my files</button>
+          </div>
+        </form>
+      </dialog>
       <input id="file-input" type="file" multiple hidden />
     </div>
 

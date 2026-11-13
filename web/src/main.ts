@@ -6,8 +6,18 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
 import type { FromWorker, NetConfig, ToWorker } from './protocol';
-import { initGuides, LESSONS, lessonProgress } from './ui/guides';
+import { initGuides, LESSONS, LESSONS_DONE_KEY, lessonProgress } from './ui/guides';
 import { renderHelperFiles } from './ui/helper';
+import { applyDom, mountPickers, onLocaleChange, t, type Key } from './i18n';
+
+applyDom();
+mountPickers();
+const applyMeta = () => {
+  document.title = t('meta.title');
+  document.querySelector('meta[name="description"]')?.setAttribute('content', t('meta.description'));
+};
+applyMeta();
+onLocaleChange(applyMeta);
 
 const params = new URLSearchParams(location.search);
 const BOOT_URL = params.get('boot') ?? '/vm/boot.json';
@@ -35,20 +45,29 @@ const store = {
 // ---------------------------------------------------------------- start view
 const LAST_KEY = 'xiaonux.lastPrompt';
 const last = Number(store.get(LAST_KEY));
-if (last > 0) $('start-timing').textContent = `Last time it was ready in ${(last / 1000).toFixed(2)} s.`;
+const renderTiming = () => { if (last > 0) $('start-timing').textContent = t('start.lastTime', { s: (last / 1000).toFixed(2) }); };
+renderTiming();
+onLocaleChange(renderTiming);
 
 // Guide progress in the worksheet's margin: a red-pen check once started.
-for (const row of document.querySelectorAll<HTMLElement>('.sheet-row[data-lesson]')) {
-  const lesson = LESSONS.find((l) => l.id === row.dataset.lesson);
-  const done = (lessonProgress()[row.dataset.lesson!] ?? []).length;
-  if (!lesson || !done) continue;
-  row.classList.add('started');
-  const p = document.createElement('span');
-  p.className = 'progress';
-  p.textContent = `${done} of ${lesson.steps.length} steps done`;
-  row.querySelector('div')!.append(p);
-  row.querySelector('[data-try]')!.textContent = 'Continue';
+function renderSheetProgress() {
+  for (const row of document.querySelectorAll<HTMLElement>('.sheet-row[data-lesson]')) {
+    const lesson = LESSONS.find((l) => l.id === row.dataset.lesson);
+    const done = (lessonProgress()[row.dataset.lesson!] ?? []).length;
+    if (!lesson || !done) continue;
+    row.classList.add('started');
+    let p = row.querySelector<HTMLElement>('.progress');
+    if (!p) {
+      p = document.createElement('span');
+      p.className = 'progress';
+      row.querySelector('div')!.append(p);
+    }
+    p.textContent = t('card.progress', { done, total: lesson.steps.length });
+    row.querySelector('[data-try]')!.textContent = t('card.continue');
+  }
 }
+renderSheetProgress();
+onLocaleChange(renderSheetProgress);
 
 // ------------------------------------------------------------------ terminal
 const dark = matchMedia('(prefers-color-scheme: dark)');
@@ -79,8 +98,15 @@ dark.addEventListener('change', () => { term.options.theme = THEMES[dark.matches
 const fit = new FitAddon();
 term.loadAddon(fit);
 term.open($('term'));
-const refit = () => { if (!workspace.hidden) fit.fit(); };
+// The drawer animates its width; refit the terminal once when it settles,
+// not on every frame of the transition.
+let drawerMoving = false;
+const refit = () => { if (!workspace.hidden && !drawerMoving) fit.fit(); };
 new ResizeObserver(refit).observe($('term-wrap'));
+drawer.addEventListener('transitionrun', (e) => { if (e.propertyName === 'width') drawerMoving = true; });
+for (const ev of ['transitionend', 'transitioncancel'] as const) {
+  drawer.addEventListener(ev, (e) => { if (e.propertyName === 'width') { drawerMoving = false; refit(); } });
+}
 
 let worker: Worker | null = null;
 const send = (m: ToWorker, transfer: Transferable[] = []) => worker?.postMessage(m, transfer);
@@ -148,7 +174,7 @@ async function ensureRelaySession(): Promise<boolean> {
     }, Math.max(60, relaySession!.expires - Date.now() / 1000 - 120) * 1000);
     return true;
   } catch (e) {
-    showNet(`The relay isn't available right now (${(e as Error).message}).`, 'blocked');
+    showNet(() => t('net.relayUnavailable', { message: (e as Error).message }), 'blocked');
     return false;
   }
 }
@@ -168,27 +194,40 @@ function netConfig(): NetConfig {
 }
 
 type ChipState = 'off' | 'waiting' | 'on' | 'blocked';
-function showNet(text: string, chip?: ChipState, chipText?: string) {
-  netStatusEl.textContent = text;
+type Text = string | (() => string);
+const CHIP_KEYS = { off: 'chip.off', waiting: 'chip.waiting', on: 'chip.on', blocked: 'chip.blocked' } as const;
+let netText: Text = '';
+let chipLabel: Text = () => t('chip.off');
+const str = (x: Text) => (typeof x === 'function' ? x() : x);
+/** Texts are functions so they can be redrawn in a new language. */
+function showNet(text: Text, chip?: ChipState, chipText?: Text) {
+  netText = text;
+  netStatusEl.textContent = str(text);
   netStatusEl.dataset.state = chip ?? '';
   if (chip) {
     netChip.dataset.state = chip;
-    netChipLabel.textContent = chipText ?? { off: 'Internet off', waiting: 'Connecting…', on: 'Internet on', blocked: 'Internet: problem' }[chip];
+    chipLabel = chipText ?? (() => t(CHIP_KEYS[chip]));
+    netChipLabel.textContent = str(chipLabel);
   }
 }
+onLocaleChange(() => {
+  netStatusEl.textContent = str(netText);
+  netChipLabel.textContent = str(chipLabel);
+});
 function syncNetUi() {
   for (const r of netRadios) r.checked = r.value === netPrefs.mode;
   $('helper-help').classList.toggle('emph', netPrefs.mode === 'helper' && !netPrefs.helperToken);
   if (netPrefs.mode === 'off') showNet('', 'off');
-  else if (netPrefs.mode === 'helper' && !netPrefs.helperToken) showNet('Run xiaonux-net on this computer. It opens this page already connected.', 'waiting', 'Waiting for helper');
+  else if (netPrefs.mode === 'helper' && !netPrefs.helperToken) showNet(() => t('net.runHelper'), 'waiting', () => t('net.waitingHelper'));
 }
 syncNetUi();
 renderHelperFiles($('helper-files'));
+onLocaleChange(() => renderHelperFiles($('helper-files')));
 for (const r of netRadios) r.addEventListener('change', async () => {
   netPrefs.mode = r.value as NetPrefs['mode'];
   syncNetUi();
   if (netPrefs.mode === 'relay') {
-    showNet('Connecting to the relay…', 'waiting');
+    showNet(() => t('net.relayConnecting'), 'waiting');
     if (!(await ensureRelaySession())) return;
   }
   send({ type: 'net', net: netConfig() });
@@ -224,6 +263,27 @@ $('drawer').querySelector('.tabs')!.addEventListener('keydown', (e) => {
 });
 drawerToggle.addEventListener('click', () => setDrawer(!drawer.classList.contains('open')));
 const wide = matchMedia('(min-width: 960px)');
+// Ctrl+Shift+G moves focus between the terminal and the drawer: Tab can't
+// leave the terminal, because the shell needs it for completion.
+const isSwitchKey = (e: KeyboardEvent) => e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.code === 'KeyG';
+term.attachCustomKeyEventHandler((e) => !isSwitchKey(e));
+document.addEventListener('keydown', (e) => {
+  if (!isSwitchKey(e) || workspace.hidden) return;
+  e.preventDefault();
+  if (drawer.contains(document.activeElement)) {
+    if (!wide.matches) setDrawer(false);
+    term.focus();
+    return;
+  }
+  setDrawer(true);
+  drawer.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+});
+// Escape inside the overlay drawer (narrow screens) closes it and returns to the terminal.
+drawer.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || wide.matches || !drawer.classList.contains('open')) return;
+  setDrawer(false);
+  term.focus();
+});
 setDrawer(store.get(DRAWER_KEY) === null ? wide.matches : store.get(DRAWER_KEY) === '1' && wide.matches);
 
 // ---------------------------------------------------------------- boot/status
@@ -234,16 +294,27 @@ let tail = '';
 const decoder = new TextDecoder();
 let diskStats: Record<string, unknown> = {};
 
+/** Status text in the bar, kept as a function so a language switch can redraw it. */
+let statusDraw: () => void = () => {};
+function setStatus(what: Key | (() => void), vars: Record<string, string | number> = {}) {
+  statusDraw = typeof what === 'function' ? what : () => { statusEl.textContent = t(what, vars); };
+  statusDraw();
+}
+onLocaleChange(() => statusDraw());
+
 function mark(name: string) {
   if (marks[name] !== undefined) return;
   marks[name] = Math.round(performance.now() - tBoot);
   if (name === 'prompt') {
-    statusEl.innerHTML = `<span class="long">Ready in </span>${(marks.prompt / 1000).toFixed(2)} s`;
-    statusEl.title = 'Time from Start to the shell prompt';
+    const s = (marks.prompt / 1000).toFixed(2);
+    setStatus(() => {
+      statusEl.innerHTML = t('status.ready', { s }); // our own markup
+      statusEl.title = t('status.readyTitle');
+    });
     statusEl.dataset.state = 'ready';
     store.set(LAST_KEY, String(marks.prompt));
   } else if (name === 'restore' || name === 'vm') {
-    statusEl.textContent = name === 'restore' ? 'Restoring…' : 'Booting Linux…';
+    setStatus(name === 'restore' ? 'status.restoring' : 'status.booting');
   }
   console.info(`[xiaonux] ${name} at ${marks[name]} ms`);
   (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched };
@@ -257,11 +328,57 @@ function watchPrompts(bytes: Uint8Array) {
   if (PROMPT.test(tail)) guides.onPrompt();
 }
 
+// ------------------------------------------------------------- home/history
+// The start view and the machine are one page. Entering the machine adds a
+// #machine history entry, so the browser's Back (and the wordmark) return to
+// the start view while the machine keeps running in its worker.
+const MACHINE = '#machine';
+const enter = (el: HTMLElement) => {
+  el.classList.remove('view-in');
+  void el.offsetWidth; // restart the animation
+  el.classList.add('view-in');
+};
 function showWorkspace() {
+  if (location.hash !== MACHINE) history.pushState({ view: 'machine' }, '', MACHINE);
+  if (!workspace.hidden) return;
   startView.hidden = true;
   workspace.hidden = false;
   document.body.classList.add('in-workspace');
+  enter(workspace);
   requestAnimationFrame(() => { fit.fit(); term.focus(); });
+}
+function renderResume() {
+  if (!worker) return;
+  bootBtn.disabled = false;
+  bootBtn.textContent = t('start.resume');
+  $('start-timing').textContent = t('start.running');
+}
+onLocaleChange(renderResume);
+function showStart() {
+  if (workspace.hidden) return;
+  workspace.hidden = true;
+  startView.hidden = false;
+  document.body.classList.remove('in-workspace');
+  renderResume();
+  enter(startView);
+  window.scrollTo(0, 0);
+  bootBtn.focus({ preventScroll: true });
+}
+function goHome() {
+  if (workspace.hidden) { window.scrollTo({ top: 0 }); return; }
+  if ((history.state as { view?: string } | null)?.view === 'machine') history.back(); // popstate shows the start view
+  else { history.replaceState(null, '', location.pathname + location.search); showStart(); }
+}
+window.addEventListener('popstate', () => {
+  if (location.hash === MACHINE) boot();
+  else showStart();
+});
+for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-home]')) {
+  a.addEventListener('click', (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return; // let "open in new tab" work
+    e.preventDefault();
+    goHome();
+  });
 }
 
 async function boot(forceCold = false) {
@@ -272,7 +389,7 @@ async function boot(forceCold = false) {
   tBoot = performance.now();
   marks = {};
   bytesFetched = 0;
-  statusEl.textContent = 'Starting…';
+  setStatus('status.starting');
   statusEl.dataset.state = '';
   worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e: MessageEvent<FromWorker>) => onWorker(e.data);
@@ -291,11 +408,11 @@ function onWorker(m: FromWorker) {
       break;
     case 'fetch':
       bytesFetched += m.bytes;
-      if (marks.prompt === undefined) statusEl.textContent = `Downloading… ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
+      if (marks.prompt === undefined) setStatus('status.downloading', { mb: (bytesFetched / 2 ** 20).toFixed(1) });
       break;
     case 'stats':
       statsEl.textContent = `${m.mips} MIPS`;
-      statsEl.title = `heap ${m.heapMb} MB · fetched ${(bytesFetched / 2 ** 20).toFixed(1)} MB`;
+      statsEl.title = t('stats.title', { heap: m.heapMb, mb: (bytesFetched / 2 ** 20).toFixed(1) });
       (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats, jit: m.jit };
       break;
     case 'disk':
@@ -312,23 +429,26 @@ function onWorker(m: FromWorker) {
     case 'net':
       if (m.status === 'rotated') break; // planned switch to a fresh relay socket
       if (m.status === 'disconnected' && m.mode === 'relay') {
-        showNet('The relay session ended; it reconnects on next use. For big downloads, use the helper.', 'blocked', 'Relay paused');
+        showNet(() => t('net.relayEnded'), 'blocked', () => t('net.relayPaused'));
         break;
       }
       if (m.mode === 'off') break;
-      if (m.status === 'connected') showNet(`Connected through ${m.mode === 'helper' ? 'xiaonux-net on this computer' : 'the relay'}.`, 'on');
-      else if (m.status === 'connecting') showNet('Connecting…', 'waiting');
-      else showNet(`Disconnected${m.detail ? ` (${m.detail})` : ''}. Is xiaonux-net still running?`, 'blocked', 'Internet lost');
+      if (m.status === 'connected') showNet(() => t(m.mode === 'helper' ? 'net.connectedHelper' : 'net.connectedRelay'), 'on');
+      else if (m.status === 'connecting') showNet(() => t('net.connecting'), 'waiting');
+      else {
+        const detail = m.detail;
+        showNet(() => (detail ? t('net.disconnectedDetail', { detail }) : t('net.disconnected')), 'blocked', () => t('net.lost'));
+      }
       break;
     case 'net-blocked':
-      showNet(`Blocked ${m.host}: ${m.reason}`, 'blocked', 'Site blocked');
+      { const { host, reason } = m; showNet(() => t('net.blocked', { host, reason }), 'blocked', () => t('net.siteBlocked')); }
       console.info(`[xiaonux] blocked ${m.host}: ${m.reason}`);
       break;
     case 'transfer':
-      showTransfer(m.dir === 'up' ? `Uploading ${upName}` : `Downloading ${dlName}`, m.done / Math.max(1, m.total));
+      showTransfer(m.dir === 'up' ? t('transfer.uploading', { name: upName }) : t('transfer.downloading', { name: dlName }), m.done / Math.max(1, m.total));
       break;
     case 'upload-done':
-      showTransfer(`Uploaded to ${m.path}`, 1, true);
+      showTransfer(t('transfer.uploaded', { path: m.path }), 1, true);
       upNext?.();
       break;
     case 'download-done': {
@@ -337,7 +457,7 @@ function onWorker(m: FromWorker) {
       a.download = m.path.split('/').pop() || 'download';
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-      showTransfer(`Downloaded ${a.download}`, 1, true);
+      showTransfer(t('transfer.downloaded', { name: a.download }), 1, true);
       break;
     }
     case 'transfer-error':
@@ -361,7 +481,7 @@ function onWorker(m: FromWorker) {
       console.info(`[xiaonux] ${m.message}`);
       break;
     case 'error':
-      statusEl.textContent = `Error: ${m.message}`;
+      setStatus('status.error', { message: m.message });
       statusEl.dataset.state = 'error';
       term.write(`\r\n\x1b[31m${m.message}\x1b[0m\r\n`);
       break;
@@ -411,12 +531,12 @@ function showTransfer(label: string, frac: number, finished = false, error = fal
 }
 async function uploadFiles(files: File[]) {
   if (!worker || marks.prompt === undefined) {
-    showTransfer('Wait for the prompt, then try again.', 0, true, true);
+    showTransfer(t('transfer.wait'), 0, true, true);
     return;
   }
   for (const f of files) {
     upName = f.name;
-    showTransfer(`Uploading ${f.name}`, 0);
+    showTransfer(t('transfer.uploading', { name: f.name }), 0);
     const data = new Uint8Array(await f.arrayBuffer());
     await new Promise<void>((resolve) => {
       upNext = () => { upNext = null; resolve(); };
@@ -457,9 +577,9 @@ $('dl-form').addEventListener('submit', (e) => {
   let p = dlPath.value.trim();
   if (!p) return;
   if (!p.startsWith('/')) p = `/root/${p}`;
-  if (!worker || marks.prompt === undefined) { showTransfer('Wait for the prompt, then try again.', 0, true, true); return; }
+  if (!worker || marks.prompt === undefined) { showTransfer(t('transfer.wait'), 0, true, true); return; }
   dlName = p.split('/').pop() || p;
-  showTransfer(`Downloading ${dlName}`, 0);
+  showTransfer(t('transfer.downloading', { name: dlName }), 0);
   send({ type: 'download', path: p.replace(/^\/root\/?/, '') });
   term.focus();
 });
@@ -473,10 +593,13 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-try]')) {
     boot();
   });
 }
-resetBtn.addEventListener('click', () => {
-  if (!confirm('Reset the machine? This deletes every file and change you made in it, including uploads.')) return;
+const resetDlg = $<HTMLDialogElement>('reset-dlg');
+resetBtn.addEventListener('click', () => { resetDlg.returnValue = ''; resetDlg.showModal(); });
+resetDlg.addEventListener('close', () => {
+  if (resetDlg.returnValue !== 'reset') { term.focus(); return; }
+  store.set(LESSONS_DONE_KEY, '{}'); // the files the checks refer to are gone
   resetBtn.disabled = true;
-  statusEl.textContent = 'Resetting…';
+  setStatus('status.resetting');
   if (!worker) {
     worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (e: MessageEvent<FromWorker>) => { if (e.data.type === 'reset-done') location.reload(); };
@@ -485,7 +608,12 @@ resetBtn.addEventListener('click', () => {
     send({ type: 'reset' });
   }
 });
-if (params.has('autoboot')) boot();
+if (location.hash === MACHINE) {
+  // Opened at #machine (e.g. Licenses → Back to Linux): start from the start
+  // view's entry so Back returns there, then boot.
+  history.replaceState(null, '', location.pathname + location.search);
+  boot();
+} else if (params.has('autoboot')) boot();
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') send({ type: 'save', reason: 'hidden' });

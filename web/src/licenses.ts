@@ -1,6 +1,7 @@
 // Licenses page: renders dist/vm/licenses.json (tools/licenses/gen.py).
 // Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
 import './style.css';
+import { applyDom, locale, mountPickers, onLocaleChange, t } from './i18n';
 
 interface Bundled { file: string; package: string; version: string; license: string; text?: string | null }
 interface Item {
@@ -17,7 +18,7 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Record<string,
 };
 const link = (href: string, label: string) => el('a', { href, rel: 'noopener' }, label);
 
-function licenseText(texts: Data['texts'], key: string | null | undefined, label = 'License text') {
+function licenseText(texts: Data['texts'], key: string | null | undefined, label = t('lic.text')) {
   if (!key || !texts[key]) return null;
   const d = el('details', { className: 'lic' }, el('summary', {}, label));
   d.addEventListener('toggle', () => {
@@ -29,17 +30,18 @@ function licenseText(texts: Data['texts'], key: string | null | undefined, label
 function itemRow(it: Item, texts: Data['texts']) {
   const name = el('th', { scope: 'row' }, it.url ? link(it.url, it.name) : it.name);
   const extra = el('td', { className: 'extra' });
-  if (it.source) extra.append(link(it.source, 'Source'));
+  if (it.source) extra.append(link(it.source, t('lic.source')));
   if (it.copyright) extra.append(el('code', {}, it.copyright));
   if (it.offer) extra.append(el('p', { className: 'offer' }, it.offer));
   for (const b of it.bundled ?? []) {
-    const p = el('p', { className: 'bundled' }, 'Bundles ', el('code', {}, b.file), ` from Debian ${b.package} ${b.version}: ${b.license}`);
+    const [before, after = ''] = t('lic.bundles', { package: b.package, version: b.version, license: b.license }).split('{file}');
+    const p = el('p', { className: 'bundled' }, before, el('code', {}, b.file), after);
     extra.append(p);
-    const t = licenseText(texts, b.text, `${b.package} copyright`);
-    if (t) extra.append(t);
+    const lt = licenseText(texts, b.text, t('lic.copyright', { package: b.package }));
+    if (lt) extra.append(lt);
   }
-  const t = licenseText(texts, it.text);
-  if (t) extra.append(t);
+  const lt = licenseText(texts, it.text);
+  if (lt) extra.append(lt);
   return el('tr', {}, name, el('td', { className: 'ver' }, it.version ?? ''), el('td', {}, it.license), extra);
 }
 
@@ -51,34 +53,51 @@ function renderGroup(g: Group, texts: Data['texts']) {
   const rows = g.items.map((it) => itemRow(it, texts));
   tbody.append(...rows);
   if (g.items.length > 20) {
-    const input = el('input', { type: 'search', placeholder: `Filter ${g.items.length} entries`, className: 'filter' });
-    input.setAttribute('aria-label', `Filter ${g.title}`);
+    const input = el('input', { type: 'search', placeholder: t('lic.filter', { n: g.items.length }), className: 'filter' });
+    input.setAttribute('aria-label', t('lic.filterLabel', { title: g.title }));
     input.addEventListener('input', () => {
       const q = input.value.trim().toLowerCase();
       g.items.forEach((it, i) => { rows[i].hidden = !!q && !`${it.name} ${it.license}`.toLowerCase().includes(q); });
     });
     sec.append(input);
   }
-  const head = el('tr', {}, ...['Component', 'Version', 'License', ''].map((h) => el('th', { scope: 'col' }, h)));
+  const head = el('tr', {}, ...[t('lic.colComponent'), t('lic.colVersion'), t('lic.colLicense'), ''].map((h) => el('th', { scope: 'col' }, h)));
   sec.append(el('div', { className: 'table-wrap' }, el('table', {}, el('thead', {}, head), tbody)));
+  sec.append(el('a', { className: 'to-top', href: '#top' }, t('lic.top')));
   if (g.common && Object.keys(g.common).length) {
-    sec.append(el('h3', {}, 'Common license texts'));
+    sec.append(el('h3', {}, t('lic.common')));
     for (const [name, key] of Object.entries(g.common)) {
-      const t = licenseText(texts, key, name);
-      if (t) sec.append(t);
+      const lt = licenseText(texts, key, name);
+      if (lt) sec.append(lt);
     }
   }
   return sec;
 }
 
-async function main() {
+let data: Data | null = null;
+function render() {
+  document.title = t('lic.title');
+  document.getElementById('lic-note')!.hidden = locale() === 'en';
   const box = document.getElementById('groups')!;
-  try {
-    const data = (await (await fetch('/vm/licenses.json')).json()) as Data;
-    box.replaceChildren(...data.groups.map((g) => renderGroup(g, data.texts)));
-    document.getElementById('toc')!.append(...data.groups.map((g) => link(`#${g.id}`, g.title)));
-  } catch {
-    box.replaceChildren(el('p', {}, 'The license list isn\'t on this server. Run ', el('code', {}, 'make licenses'), ' and reload.'));
+  if (!data) {
+    const p = el('p');
+    p.innerHTML = t('lic.missing'); // our own markup
+    box.replaceChildren(p);
+    return;
   }
+  box.replaceChildren(...data.groups.map((g) => renderGroup(g, data!.texts)));
+  document.getElementById('toc')!.replaceChildren(...data.groups.map((g) => link(`#${g.id}`, g.title)));
+}
+
+async function main() {
+  applyDom();
+  mountPickers();
+  document.title = t('lic.title');
+  document.getElementById('lic-note')!.hidden = locale() === 'en';
+  onLocaleChange(render);
+  try {
+    data = (await (await fetch('/vm/licenses.json')).json()) as Data;
+  } catch { /* shown by render() */ }
+  render();
 }
 main();

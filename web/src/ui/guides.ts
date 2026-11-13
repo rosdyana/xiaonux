@@ -6,12 +6,14 @@ import permissions from '../lessons/permissions.json';
 import processes from '../lessons/processes.json';
 import python from '../lessons/python.json';
 import triage from '../lessons/triage.json';
+import { lessonText, onLocaleChange, t } from '../i18n';
 
 interface Step { text: string; cmd?: string }
 interface Lesson { id: string; title: string; intro: string; steps: Step[] }
 
 export const LESSONS: Lesson[] = [unixBasics, permissions, processes, python, triage];
-const DONE_KEY = 'xiaonux.lessons.done';
+export const LESSONS_DONE_KEY = 'xiaonux.lessons.done';
+const DONE_KEY = LESSONS_DONE_KEY;
 const CHECK = '<svg class="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5l5 5.5L20 5"/></svg>';
 
 export function lessonProgress(): Record<string, number[]> {
@@ -35,7 +37,12 @@ export function initGuides(type: (s: string) => void): Guides {
   let typed: number | null = null;   // step whose command is in the input line
   let running: number | null = null; // step submitted with Enter, waiting for a prompt
 
-  for (const l of LESSONS) select.add(new Option(l.title, l.id));
+  const fillSelect = () => {
+    select.replaceChildren(...LESSONS.map((l) => new Option(lessonText(l).title, l.id)));
+    select.value = lesson.id;
+  };
+  fillSelect();
+  onLocaleChange(() => { fillSelect(); show(lesson.id); });
   select.addEventListener('change', () => show(select.value));
 
   function save() {
@@ -58,7 +65,8 @@ export function initGuides(type: (s: string) => void): Guides {
   function show(id: string) {
     lesson = LESSONS.find((l) => l.id === id) ?? LESSONS[0];
     select.value = lesson.id;
-    intro.textContent = lesson.intro;
+    const text = lessonText(lesson);
+    intro.textContent = text.intro;
     typed = running = null;
     const finished = new Set(done[lesson.id] ?? []);
     list.replaceChildren(...lesson.steps.map((s, i) => {
@@ -68,13 +76,13 @@ export function initGuides(type: (s: string) => void): Guides {
       mark.type = 'button';
       mark.className = 'mark';
       mark.setAttribute('aria-pressed', String(finished.has(i)));
-      mark.setAttribute('aria-label', `Step ${i + 1} done`);
+      mark.setAttribute('aria-label', t('guides.stepDone', { n: i + 1 }));
       mark.innerHTML = `<span class="num">${i + 1}</span>${CHECK}`;
       mark.addEventListener('click', () => setDone(i, !li.classList.contains('done')));
       const body = document.createElement('div');
       body.className = 'step-body';
       const p = document.createElement('p');
-      p.innerHTML = s.text; // lesson text is our own static JSON
+      p.innerHTML = text.step(i); // lesson text is our own static JSON / translations
       body.append(p);
       if (s.cmd) {
         const row = document.createElement('div');
@@ -84,7 +92,7 @@ export function initGuides(type: (s: string) => void): Guides {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-quiet btn-small';
-        btn.textContent = 'Type it';
+        btn.textContent = t('guides.typeIt');
         btn.addEventListener('click', () => {
           type('\x15' + s.cmd); // Ctrl-U clears whatever was half-typed
           typed = i;
@@ -109,7 +117,7 @@ export function initGuides(type: (s: string) => void): Guides {
       running = null;
       setDone(i, true, true);
       const next = list.children[i + 1] as HTMLElement | undefined;
-      next?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      next?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     },
   };
 }
