@@ -11,3 +11,5 @@ web/.env.local
 .wrangler
 promo/
 docs/
+.claude/
+.impeccable
