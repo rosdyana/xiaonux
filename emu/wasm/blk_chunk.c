@@ -25,6 +25,7 @@
 #include "cutils.h"
 #include "virtio.h"
 #include "sha256.h"
+#include "blk_range.h"
 #include <brotli/decode.h>
 
 #define SECTOR_SIZE 512
@@ -204,12 +205,15 @@ static int read_cluster(ChunkDisk *d, uint32_t c, uint8_t *buf, int *wait_block)
 /* ---------- request engine ---------- */
 
 /* Process as much of the active request as possible.
-   Returns 0 when the request is complete, 1 if waiting on a block. */
+   Returns 0 when the request is complete, 1 if waiting on a block,
+   -1 if the request is out of range. */
 static int process_request(ChunkDisk *d)
 {
     uint8_t tmp[CLUSTER_SIZE];
 
     while (d->req_left > 0) {
+        if (d->req_sector >= (uint64_t)d->n_clusters * SECTORS_PER_CLUSTER)
+            return -1;   /* cannot happen after start_request's check */
         uint32_t c = d->req_sector / SECTORS_PER_CLUSTER;
         int in_off = d->req_sector % SECTORS_PER_CLUSTER;
         int n = min_int(d->req_left, SECTORS_PER_CLUSTER - in_off);
@@ -269,7 +273,9 @@ static int start_request(ChunkDisk *d, BOOL is_write, uint64_t sector,
                          uint8_t *buf, int n,
                          BlockDeviceCompletionFunc *cb, void *opaque)
 {
-    if (sector + n > (uint64_t)chunk_get_sector_count(&g_bs))
+    int r;
+
+    if (!blk_range_ok(sector, n, (uint64_t)chunk_get_sector_count(&g_bs)))
         return -1;
     assert(!d->req_active);
     d->req_active = TRUE;
@@ -279,7 +285,14 @@ static int start_request(ChunkDisk *d, BOOL is_write, uint64_t sector,
     d->req_buf = d->req_buf_base = buf;
     d->req_cb = NULL;
     d->req_opaque = NULL;
-    if (process_request(d) == 0) {
+    r = process_request(d);
+    if (r < 0) {
+        /* buf is still virtio's own buffer here, so do not free it */
+        d->req_active = FALSE;
+        d->req_buf = d->req_buf_base = NULL;
+        return -1;
+    }
+    if (r == 0) {
         d->req_active = FALSE;
         d->req_buf = d->req_buf_base = NULL;
         return 0;  /* completed synchronously */
@@ -420,7 +433,10 @@ EMSCRIPTEN_KEEPALIVE void blk_chunk_loaded(int block, const uint8_t *data, int l
             finish_request(d, -1);
             return;
         }
-        if (process_request(d) == 0)
+        int r = process_request(d);
+        if (r < 0)
+            finish_request(d, -1);
+        else if (r == 0)
             finish_request(d, 0);
     }
 }

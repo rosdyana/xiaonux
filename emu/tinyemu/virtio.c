@@ -1086,6 +1086,14 @@ static int virtio_block_recv_request(VIRTIODevice *s, int queue_idx,
     
     if (memcpy_from_queue(s, &h, queue_idx, desc_idx, 0, sizeof(h)) < 0)
         return 0;
+    /* xiaonux: the status byte goes at buf[write_size - 1] and OUT data
+       starts after the header: reject descriptors too short for either
+       (guest-controlled; 0 used to write before the allocation). */
+    if (write_size < 1 ||
+        (h.type == VIRTIO_BLK_T_OUT && read_size < (int)sizeof(h))) {
+        virtio_consume_desc(s, queue_idx, desc_idx, 0);
+        return 0;
+    }
     s1->req.type = h.type;
     s1->req.queue_idx = queue_idx;
     s1->req.desc_idx = desc_idx;
