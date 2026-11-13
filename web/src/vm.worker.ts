@@ -46,6 +46,9 @@ let ready = false;
 let t0 = 0;
 const input: number[] = [];
 let inputHead = 0;
+// Closed after a restore until the guest has taken fresh entropy; keystrokes
+// keep queueing in `input` and are delivered once it opens.
+let inputOpen = true;
 let outChunks: Uint8Array[] = [];
 let outBytes = 0;
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
@@ -105,7 +108,7 @@ function flushOutput() {
 }
 
 function drainInput() {
-  if (!vm) return;
+  if (!vm || !inputOpen) return;
   while (inputHead < input.length && vm._console_queue_char(input[inputHead])) inputHead++;
   if (inputHead === input.length) {
     input.length = 0;
@@ -267,8 +270,14 @@ function onAgent(bytes: Uint8Array) {
 function agentRequest(line: string, timeoutMs = 5000): Promise<{ ok: boolean; line: string }> {
   const cmd = line.split(' ')[0];
   const p = new Promise<{ ok: boolean; line: string }>((resolve) => {
-    agentWaiters.push({ cmd, resolve: (ok, l) => resolve({ ok, line: l }) });
-    setTimeout(() => resolve({ ok: false, line: 'timeout' }), timeoutMs);
+    const w = { cmd, resolve: (ok: boolean, l: string) => resolve({ ok, line: l }) };
+    agentWaiters.push(w);
+    setTimeout(() => {
+      // A late reply must not resolve the next waiter for the same command.
+      const i = agentWaiters.indexOf(w);
+      if (i >= 0) agentWaiters.splice(i, 1);
+      resolve({ ok: false, line: 'timeout' });
+    }, timeoutMs);
   });
   agentWrite(line);
   return p;
@@ -317,23 +326,29 @@ async function downloadFile(path: string): Promise<Uint8Array> {
   return result;
 }
 
-// After a restore: fresh entropy and the real clock before the user sees a
-// prompt (the snapshot's CRNG state and clock are the same for everyone).
+// After a restore: fresh entropy and the real clock before the user can type
+// (the snapshot's CRNG state and clock are the same for everyone). Input stays
+// held (inputOpen) until the guest has taken a seed. If it never does, a cold
+// boot is the only way to a guest that doesn't share its random state.
 async function afterRestore() {
-  const seed = crypto.getRandomValues(new Uint8Array(64));
-  const hex = [...seed].map((b) => b.toString(16).padStart(2, '0')).join('');
-  const [okSeed, okTime] = await Promise.all([
-    agentCommand(`seed ${hex}`, 15000),
-    agentCommand(`time ${Date.now()}`, 15000),
-  ]);
+  const newSeed = () => hex(crypto.getRandomValues(new Uint8Array(64)).buffer);
+  const seedWithRetry = async () =>
+    (await agentCommand(`seed ${newSeed()}`, 15000)) || agentCommand(`seed ${newSeed()}`, 15000); // fresh seed for the retry
+  const [okSeed, okTime] = await Promise.all([seedWithRetry(), agentCommand(`time ${Date.now()}`, 15000)]);
   if (!okSeed || !okTime) post({ type: 'log', message: `agent: seed ${okSeed} time ${okTime}` });
+  if (!okSeed) {
+    post({ type: 'log', message: 'agent did not take the entropy seed; cold booting' });
+    post({ type: 'restart-cold' });
+    return; // input stays closed; no 'restored'
+  }
+  inputOpen = true;
   const [cols, rows] = vm!.consoleSize;
   agentCommand(`size ${cols} ${rows}`);
   // Ask the shell (waiting at its prompt in the snapshot) for a fresh prompt.
   input.push(13);
   drainInput();
   wake();
-  post({ type: 'restored', ms: Math.round(performance.now() - t0), agentOk: okSeed && okTime });
+  post({ type: 'restored', ms: Math.round(performance.now() - t0), agentOk: okTime });
 }
 
 // ----- user snapshots -----
@@ -425,7 +440,10 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
         const pf = desc.prefetch;
         setTimeout(() => d.prefetchBundle(pf.file, pf.index).then((n) => n && post({ type: 'log', message: `prefetched ${(n / 2 ** 20).toFixed(1)} MB` })), 50);
       }
-      if (restored === 1) afterRestore();
+      if (restored === 1) {
+        inputOpen = false;
+        afterRestore();
+      }
     },
   });
   vm = mod;

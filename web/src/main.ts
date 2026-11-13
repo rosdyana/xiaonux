@@ -441,7 +441,8 @@ function onWorker(m: FromWorker) {
       diskStats = m.stats as unknown as Record<string, unknown>;
       break;
     case 'restored':
-      if (!m.agentOk) console.warn('[xiaonux] guest agent did not answer; clock/entropy not refreshed');
+      // Entropy was seeded (else we'd have restarted cold); only the clock failed.
+      if (!m.agentOk) console.warn('[xiaonux] guest agent did not set the clock');
       break;
     case 'restart-cold':
       worker?.terminate();
