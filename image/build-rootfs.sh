@@ -18,6 +18,10 @@ rm -rf "$ROOT" "$IMG"
 mkdir -p "$ROOT"
 
 PKGS=systemd-sysv,udev,iproute2,iputils-ping,ca-certificates,curl,python3,python3-pip,nano,less,procps
+# Security / learning toolbox (static analysis, tracing, networking). radare2 and
+# rizin aren't packaged for riscv64 in trixie.
+PKGS=$PKGS,file,binutils-multiarch,xxd,strace,ltrace,gdb-minimal,yara,binwalk,hexedit,jq
+PKGS=$PKGS,vim-tiny,unzip,zip,7zip,net-tools,bind9-dnsutils,tcpdump,nmap,netcat-openbsd,python3-pefile
 
 mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --dpkgopt='path-exclude=/usr/share/man/*' \
@@ -42,6 +46,24 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --customize-hook='chroot "$1" systemctl mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer e2scrub_all.timer fstrim.timer 2>/dev/null || true' \
   --customize-hook='rm -rf "$1"/var/cache/apt/*.bin "$1"/var/lib/apt/lists/* "$1"/var/log/*.log' \
   "$DEBIAN_SUITE" "$ROOT" http://deb.debian.org/debian
+
+# Package manifest for the Licenses page: name, version, source package and
+# the license names declared in each package's copyright file.
+chroot "$ROOT" dpkg-query -W -f='${Package}\t${Version}\t${source:Package}\t${source:Version}\n' > "$XBUILD/packages.tsv"
+while IFS=$'\t' read -r pkg ver src srcver; do
+  lic=$({ grep -h '^License:' "$ROOT/usr/share/doc/$pkg/copyright" 2>/dev/null || true; } | sed 's/^License: *//' | sort -u | paste -sd ';' -)
+  printf '%s\t%s\t%s\t%s\t%s\n' "$pkg" "$ver" "$src" "$srcver" "${lic:-see copyright}"
+done < "$XBUILD/packages.tsv" > "$REPO/build/packages.tsv"
+chown "${SUDO_UID:-0}:${SUDO_GID:-0}" "$REPO/build/packages.tsv"
+# License texts for tools/licenses/gen.py (the kernel and OpenSBI trees were
+# unpacked here by build-kernel.sh / build-opensbi.sh).
+LSRC="$REPO/build/licenses-src"
+mkdir -p "$LSRC"
+rm -rf "$LSRC/common-licenses"
+cp -r "$ROOT/usr/share/common-licenses" "$LSRC/"
+cp "$XBUILD/linux-$LINUX_VERSION/COPYING" "$LSRC/linux-COPYING" 2>/dev/null || echo "warning: no kernel tree; run make kernel first"
+cp "$XBUILD/opensbi-$OPENSBI_VERSION/COPYING.BSD" "$LSRC/opensbi-COPYING.BSD" 2>/dev/null || echo "warning: no OpenSBI tree; run make firmware first"
+chown -R "${SUDO_UID:-0}:${SUDO_GID:-0}" "$LSRC"
 
 truncate -s "$IMG_SIZE" "$IMG"
 mkfs.ext4 -q -F -L root -b 4096 -d "$ROOT" "$IMG"

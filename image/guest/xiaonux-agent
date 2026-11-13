@@ -5,18 +5,37 @@
   time <unix_ms>      set the wall clock
   size <cols> <rows>  set the terminal size of /dev/hvc0
   ping                liveness
+  put <size> <name>   start an upload into /root/uploads/<name>
+  chunk <base64>      next piece of the upload (no reply)
+  end <sha256>        finish the upload; checked against size and hash
+  get <path>          send a file back (only under /root): replies
+                      "file <size> <sha256>", then "data <base64>" lines,
+                      then "ok get"
 
-Each command is answered with "ok <cmd>" or "err <cmd> <reason>".
+Each command is answered with "ok <cmd> [...]" or "err <cmd> <reason>".
 After a snapshot restore the page sends seed + time before showing the
 prompt, so every visitor gets their own random state and the right date.
+
+Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
 """
-import fcntl, os, struct, sys, termios, time, tty
+import base64, fcntl, hashlib, os, struct, termios, time, tty
 
 RNDADDENTROPY = 0x40085203  # _IOW('R', 0x03, int[2])
 RNDRESEEDCRNG = 0x5207      # _IO('R', 0x07)
+UPLOADS = "/root/uploads"
+MAX_FILE = 256 << 20        # 256 MB either way
+CHUNK = 48 * 1024           # raw bytes per "data" line on download
+
+upload = None  # {"name", "size", "f", "hash", "got"}
 
 
-def handle(line: str) -> str:
+def safe_name(name: str) -> str:
+    name = os.path.basename(name.replace("\\", "/")).strip() or "upload"
+    return "".join(c if c.isalnum() or c in "._-+" else "_" for c in name)[:200]
+
+
+def handle(line: str, out) -> str:
+    global upload
     parts = line.split()
     if not parts:
         return ""
@@ -37,6 +56,53 @@ def handle(line: str) -> str:
             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
         finally:
             os.close(fd)
+    elif cmd == "put":
+        size = int(args[0])
+        if size > MAX_FILE:
+            return "err put too-large\n"
+        os.makedirs(UPLOADS, mode=0o700, exist_ok=True)
+        name = safe_name(" ".join(args[1:]))
+        if upload:
+            upload["f"].close()
+        upload = {"name": name, "size": size, "got": 0, "hash": hashlib.sha256(),
+                  "f": open(os.path.join(UPLOADS, name + ".part"), "wb")}
+        return f"ok put {name}\n"
+    elif cmd == "chunk":
+        if not upload:
+            return ""
+        data = base64.b64decode(args[0])
+        upload["f"].write(data)
+        upload["hash"].update(data)
+        upload["got"] += len(data)
+        return ""
+    elif cmd == "end":
+        if not upload:
+            return "err end no-upload\n"
+        u, upload = upload, None
+        u["f"].close()
+        part = os.path.join(UPLOADS, u["name"] + ".part")
+        if u["got"] != u["size"] or u["hash"].hexdigest() != args[0]:
+            os.unlink(part)
+            return "err end mismatch\n"
+        final = os.path.join(UPLOADS, u["name"])
+        os.replace(part, final)
+        os.chmod(final, 0o600)  # never executable by default
+        return f"ok end {final}\n"
+    elif cmd == "get":
+        path = os.path.realpath(os.path.join("/root", " ".join(args)))
+        if not (path == "/root" or path.startswith("/root/")) or not os.path.isfile(path):
+            return "err get not-a-file-under-/root\n"
+        size = os.path.getsize(path)
+        if size > MAX_FILE:
+            return "err get too-large\n"
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+        out(f"file {size} {h.hexdigest()}\n".encode())
+        with open(path, "rb") as f:
+            for block in iter(lambda: f.read(CHUNK), b""):
+                out(b"data " + base64.b64encode(block) + b"\n")
     elif cmd != "ping":
         return f"err {cmd} unknown\n"
     return f"ok {cmd}\n"
@@ -58,22 +124,31 @@ def main():
     lock_memory()
     fd = os.open("/dev/hvc1", os.O_RDWR | os.O_NOCTTY)
     tty.setraw(fd)
-    buf = b""
+
+    def out(b: bytes):
+        while b:
+            n = os.write(fd, b)
+            b = b[n:]
+
+    buf = bytearray()
     while True:
-        data = os.read(fd, 4096)
+        data = os.read(fd, 65536)
         if not data:
             time.sleep(0.1)
             continue
         buf += data
-        while b"\n" in buf:
-            raw, buf = buf.split(b"\n", 1)
-            line = raw.decode("ascii", "replace").strip()
+        while True:
+            i = buf.find(b"\n")
+            if i < 0:
+                break
+            line = buf[:i].decode("ascii", "replace").strip()
+            del buf[:i + 1]
             try:
-                reply = handle(line)
+                reply = handle(line, out)
             except Exception as e:  # report and keep serving
                 reply = f"err {line.split()[0] if line else '?'} {type(e).__name__}\n"
             if reply:
-                os.write(fd, reply.encode())
+                out(reply.encode())
 
 
 if __name__ == "__main__":

@@ -38,9 +38,10 @@ a = ap.parse_args()
 
 out = a.out
 os.makedirs(out, exist_ok=True)
-# Remove everything but the content-addressed chunk store and the wheel index.
+# Remove everything but the chunk store, the wheel index, the helper downloads
+# (helper/release.sh) and the license list (tools/licenses/gen.py).
 for name in os.listdir(out):
-    if name in ("chunks", "pypi"):
+    if name in ("chunks", "pypi", "helper", "licenses.json"):
         continue
     p = os.path.join(out, name)
     shutil.rmtree(p) if os.path.isdir(p) else os.unlink(p)
