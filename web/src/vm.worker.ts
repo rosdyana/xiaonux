@@ -513,10 +513,19 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       drainInput();
       wake();
       break;
-    case 'net':
-      net?.resetAll();
-      if (net) net.exit = makeExit(m.net);
+    case 'net': {
+      if (!net) break;
+      const cur = net.exit;
+      // Same kind of exit (e.g. a renewed relay session): keep open connections.
+      if (cur instanceof WispExit && m.net.mode !== 'off' && cur.kind === m.net.mode) {
+        cur.renew(m.net);
+        break;
+      }
+      net.resetAll();
+      if (cur instanceof WispExit) cur.close();
+      net.exit = makeExit(m.net);
       break;
+    }
     case 'jit-export': {
       if (!vm) break;
       const lp = vm._malloc(4);

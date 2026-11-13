@@ -146,6 +146,8 @@ class Conn {
 export class WispExit implements Exit {
   private current: Conn | null = null;
   private nextId = 1;
+  /** closed for good: no more status events */
+  private shut = false;
 
   constructor(
     readonly kind: 'helper' | 'relay',
@@ -159,10 +161,12 @@ export class WispExit implements Exit {
   ) {}
 
   status(s: WispStatus, detail?: string) {
+    if (this.shut) return;
     this.onStatus(s, detail);
   }
 
   connClosed(c: Conn, detail: string) {
+    if (this.shut) return;
     if (c === this.current) {
       this.current = null;
       // A drop the client didn't ask for (e.g. the relay shed the request):
@@ -238,8 +242,23 @@ export class WispExit implements Exit {
     }
   }
 
+  /** New session URLs: new streams use a fresh socket; open streams finish on the old one. */
+  renew(cfg: { wsUrl: string; pingUrl: string; allowed?: string[]; ports?: number[]; rotateBytes?: number }) {
+    this.wsUrl = cfg.wsUrl;
+    this.pingUrl = cfg.pingUrl;
+    this.allowed = cfg.allowed;
+    this.ports = cfg.ports;
+    this.rotateBytes = cfg.rotateBytes ?? 0;
+    const c = this.current;
+    this.current = null;
+    if (c && !c.dead) { c.retired = true; c.maybeClose(); }
+  }
+
   close() {
-    this.current?.ws.close();
+    this.shut = true;
+    const c = this.current;
+    this.current = null;
+    c?.ws.close();
   }
 }
 
