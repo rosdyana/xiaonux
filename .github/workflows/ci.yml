@@ -1,6 +1,7 @@
 # Checks on every push and pull request: the page builds, the relay
 # typechecks, the network helper compiles, passes clippy and its tests, and the
-# native C unit test for the emulator's disk-range check passes.
+# native C unit tests for the emulator (disk-range check and snapshot buffer)
+# pass.
 # The emulator build, guest image and browser tests need local toolchains
 # (Emscripten, a Linux VM, a built dist/vm) and aren't run here.
 name: ci
@@ -65,3 +66,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/wasm -o build/blk_range_test emu/wasm/test/blk_range_test.c && ./build/blk_range_test
+      - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/tinyemu -o build/xsnap_test emu/wasm/test/xsnap_test.c && ./build/xsnap_test
