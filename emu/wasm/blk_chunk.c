@@ -12,7 +12,8 @@
  * lives on the JS side (OPFS sync access handle, or memory) and is accessed
  * synchronously; C only keeps a bitmap of which clusters are present.
  *
- * Copyright (c) 2026 xiaonux authors. MIT License.
+ * Copyright (c) 2026 xiaonux authors.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #include <stdlib.h>
 #include <stdio.h>

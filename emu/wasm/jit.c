@@ -7,7 +7,8 @@
  * WASM module each, and called through the Emscripten function table.
  * Everything this doesn't handle is left to TinyEMU's interpreter.
  *
- * Copyright (c) 2026 xiaonux authors. MIT License.
+ * Copyright (c) 2026 xiaonux authors.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #include <stdlib.h>
 #include <stdio.h>

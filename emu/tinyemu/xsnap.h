@@ -6,7 +6,8 @@
  * fixed-width little-endian, so a snapshot made by native temu restores in
  * the WASM build (struct layouts and pointer sizes differ).
  *
- * Copyright (c) 2026 xiaonux authors. MIT License.
+ * Copyright (c) 2026 xiaonux authors.
+ * SPDX-License-Identifier: Apache-2.0
  */
 #ifndef XSNAP_H
 #define XSNAP_H

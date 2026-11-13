@@ -4,5 +4,6 @@
   "type": "module",
   "devDependencies": {
     "playwright-core": "^1.56.0"
-  }
+  },
+  "license": "Apache-2.0"
 }

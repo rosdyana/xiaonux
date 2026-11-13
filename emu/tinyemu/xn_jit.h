@@ -1,4 +1,5 @@
-/* xiaonux: RISC-V -> WASM block translator interface (WASM build, XN_JIT). */
+/* xiaonux: RISC-V -> WASM block translator interface (WASM build, XN_JIT).
+ * Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0 */
 #ifndef XN_JIT_H
 #define XN_JIT_H
 #include <stdint.h>

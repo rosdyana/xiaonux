@@ -2,7 +2,8 @@
 name = "xiaonux-net"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
+repository = "https://github.com/rosdyana/xiaonux"
 description = "Lets the xiaonux browser VM use this computer's internet (WISP over a localhost WebSocket)"
 
 [dependencies]
