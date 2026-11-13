@@ -387,6 +387,8 @@ async function fetchCached(url: string): Promise<Uint8Array> {
 async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly = false, forceCold = false, record = false, netCfg?: NetConfig, jit = true, jitCheck = false) {
   t0 = performance.now();
   const bootAbs = new URL(bootUrl, self.location.href);
+  // The emulator script is imported from next to boot.json: only ever our own.
+  if (bootAbs.origin !== self.location.origin) throw new Error('boot.json must be on this site');
   const base = new URL('.', bootAbs).href;
   const [desc, { default: createXemu }] = await Promise.all([
     fetch(bootAbs, { cache: 'no-cache' }).then((r) => r.json() as Promise<BootDesc>),

@@ -22,9 +22,22 @@ applyMeta();
 onLocaleChange(applyMeta);
 
 const params = new URLSearchParams(location.search);
-const BOOT_URL = params.get('boot') ?? '/vm/boot.json';
-const RAM_MB = Number(params.get('ram') ?? 0); // 0 = use the .cfg's memory_size
-const CMDLINE = params.get('cmdline') ?? '';
+// Parameters that point the page at other code or other servers are for
+// development only: in a published build a link must not be able to choose
+// them (it could load another site's script into this origin).
+// MODE, not DEV: DEV follows NODE_ENV, which a shell can set to development
+// during a production build; MODE is `development` only for the dev server.
+const IS_DEV_SERVER = import.meta.env.MODE === 'development';
+const devParam = (k: string) => (IS_DEV_SERVER ? params.get(k) : null);
+const BOOT_URL = (() => {
+  const fallback = '/vm/boot.json';
+  const p = devParam('boot');
+  if (!p) return fallback;
+  const u = new URL(p, location.href);
+  return u.origin === location.origin ? u.pathname + u.search : fallback;
+})();
+const RAM_MB = Number(devParam('ram') ?? 0); // 0 = use the .cfg's memory_size
+const CMDLINE = devParam('cmdline') ?? '';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const startView = $('start');
@@ -129,10 +142,13 @@ if (params.get('net') === 'helper' && params.get('token')) {
   netPrefs = { mode: 'helper', helperPort: Number(params.get('port') ?? 8787), helperToken: params.get('token')! };
   history.replaceState(null, '', location.pathname + (params.has('autoboot') ? '?autoboot' : ''));
 }
-if (params.get('net') === 'relay' || params.get('net') === 'off') netPrefs = { ...netPrefs, mode: params.get('net') as NetPrefs['mode'] };
+// `net=off` only makes things safer, so it works everywhere; turning the relay
+// on from a link is dev-only (in a published build it takes a click).
+const netParam = params.get('net');
+if (netParam === 'off' || (netParam === 'relay' && IS_DEV_SERVER)) netPrefs = { ...netPrefs, mode: netParam };
 
-const RELAY_URL = (params.get('relay') ?? import.meta.env.VITE_RELAY_URL ?? '').replace(/\/$/, '');
-const TURNSTILE_SITEKEY: string = params.get('turnstile') === '0' ? '' : (import.meta.env.VITE_TURNSTILE_SITEKEY ?? '');
+const RELAY_URL = (devParam('relay') ?? import.meta.env.VITE_RELAY_URL ?? '').replace(/\/$/, '');
+const TURNSTILE_SITEKEY: string = devParam('turnstile') === '0' ? '' : (import.meta.env.VITE_TURNSTILE_SITEKEY ?? '');
 let relaySession: { session: string; expires: number; allowed?: string[]; ports?: number[]; rotateBytes?: number } | null = null;
 const netRadios = [...document.querySelectorAll<HTMLInputElement>('input[name=netmode]')];
 if (!RELAY_URL) $('relay-option').hidden = true;
