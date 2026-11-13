@@ -390,7 +390,6 @@ select:hover, input[type="text"]:hover { border-color: var(--blue); }
 .netstatus:empty { display: none; }
 .netstatus[data-state="on"] { color: var(--ok) !important; }
 .netstatus[data-state="blocked"] { color: var(--pen) !important; }
-.helper.emph h3 { color: var(--blue); }
 .files { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
 .files li {
   display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: baseline;
