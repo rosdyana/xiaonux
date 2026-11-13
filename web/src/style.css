@@ -505,6 +505,32 @@ select:hover, input[type="text"]:hover { border-color: var(--blue); }
   .bar .chip { padding: 6px 8px; gap: 6px; }
   .term-wrap { padding: 6px 0 0 6px; }
 }
+/* ---------------------------------------------------------------- analytics consent */
+/* A worksheet note in the corner of the start page; never over the machine. */
+.consent {
+  position: fixed;
+  left: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 20;
+  width: min(440px, calc(100vw - 32px));
+  padding: 14px 16px 12px;
+  background: var(--sheet);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 13.5px;
+  line-height: 1.5;
+  animation: consent-in 260ms var(--ease);
+}
+.consent[hidden], body.in-workspace .consent { display: none; }
+.consent-text { margin: 0 0 10px; }
+.consent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.consent-spacer { flex: 1; }
+.consent-more { color: var(--blue); font-size: 13px; }
+@keyframes consent-in { from { transform: translateY(8px); opacity: 0; } }
+.doc-foot { margin-top: 48px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
 }
@@ -553,6 +579,9 @@ body.doc { background: var(--paper); }
   cursor: pointer;
 }
 .lang:hover { color: var(--ink); border-color: var(--blue); }
+/* The open list is drawn by the OS: give it the page colours so text and ground always match. */
+.lang { background-color: var(--paper); }
+.lang option { color: var(--ink); background-color: var(--sheet); }
 .start-nav { align-items: baseline; flex: none; }
 @media (max-width: 640px) { .start-head { flex-wrap: wrap; } .start-nav { flex-wrap: wrap; } }
 

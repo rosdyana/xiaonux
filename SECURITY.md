@@ -8,6 +8,8 @@ Programs inside xiaonux never run on your computer's processor. They run on an e
 - **No network by default.** With the xiaonux-net helper on, guest connections go out from your computer, to ports 80 and 443 only, and private/local-network addresses are refused. With the relay on, only an allow-list of package hosts is reachable.
 - **Local storage only.** Changes to the disk are kept in your browser (OPFS). Reset deletes them.
 
+What does leave your browser (opt-in analytics, the site's hosting, the optional network) is listed in [PRIVACY.md](PRIVACY.md).
+
 ## Using it to look at malware
 
 Good for learning and triage:

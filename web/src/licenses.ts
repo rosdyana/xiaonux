@@ -2,6 +2,7 @@
 // Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
 import './style.css';
 import { applyDom, locale, mountPickers, onLocaleChange, t } from './i18n';
+import { initConsent } from './consent';
 
 interface Bundled { file: string; package: string; version: string; license: string; text?: string | null }
 interface Item {
@@ -92,6 +93,7 @@ function render() {
 async function main() {
   applyDom();
   mountPickers();
+  initConsent();
   document.title = t('lic.title');
   document.getElementById('lic-note')!.hidden = locale() === 'en';
   onLocaleChange(render);

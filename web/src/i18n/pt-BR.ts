@@ -39,6 +39,13 @@ const ptBR: Locale = {
     'foot.licenses': 'Licenças',
     'foot.security': 'Notas de segurança',
     'foot.source': 'Código no GitHub',
+    'foot.privacy': "Privacidade",
+    'foot.analytics': "Configurações de análise",
+    'consent.label': "Escolha sobre análise",
+    'consent.text': "Podemos contar as visitas com o Google Analytics? Ele veria quais páginas você abre, sua localização aproximada e o tipo de dispositivo, e gravaria cookies. Ele nunca vê o que você digita no Linux nem os seus arquivos. Nada é enviado a menos que você permita.",
+    'consent.allow': "Permitir",
+    'consent.deny': "Não, obrigado",
+    'consent.more': "Detalhes de privacidade",
 
     'status.starting': 'Iniciando…',
     'status.restoring': 'Restaurando…',

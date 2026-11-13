@@ -40,6 +40,13 @@ const strings = {
   'foot.licenses': 'Licenses',
   'foot.security': 'Security notes',
   'foot.source': 'Source on GitHub',
+  'foot.privacy': "Privacy",
+  'foot.analytics': "Analytics settings",
+  'consent.label': "Analytics choice",
+  'consent.text': "Can we count visits with Google Analytics? It would see which pages you open, your rough location and device type, and set cookies. It never sees what you type in Linux or your files. Nothing is sent unless you allow it.",
+  'consent.allow': "Allow",
+  'consent.deny': "No thanks",
+  'consent.more': "Privacy details",
 
   // workspace bar
   'status.starting': 'Starting…',

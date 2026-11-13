@@ -39,6 +39,13 @@ const vi: Locale = {
     'foot.licenses': 'Giấy phép',
     'foot.security': 'Ghi chú bảo mật',
     'foot.source': 'Mã nguồn trên GitHub',
+    'foot.privacy': "Quyền riêng tư",
+    'foot.analytics': "Cài đặt phân tích",
+    'consent.label': "Lựa chọn phân tích",
+    'consent.text': "Chúng tôi có thể đếm lượt truy cập bằng Google Analytics không? Google sẽ thấy các trang bạn mở, vị trí gần đúng và loại thiết bị của bạn, đồng thời đặt cookie. Google không bao giờ thấy những gì bạn gõ trong Linux hay các tệp của bạn. Không có gì được gửi đi trừ khi bạn cho phép.",
+    'consent.allow': "Cho phép",
+    'consent.deny': "Không, cảm ơn",
+    'consent.more': "Chi tiết quyền riêng tư",
 
     'status.starting': 'Đang khởi động…',
     'status.restoring': 'Đang khôi phục…',

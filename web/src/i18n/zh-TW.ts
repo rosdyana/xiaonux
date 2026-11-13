@@ -39,6 +39,13 @@ const zhTW: Locale = {
     'foot.licenses': '授權條款',
     'foot.security': '安全說明',
     'foot.source': 'GitHub 上的原始碼',
+    'foot.privacy': "隱私",
+    'foot.analytics': "分析設定",
+    'consent.label': "分析選擇",
+    'consent.text': "我們可以用 Google Analytics 統計造訪次數嗎？它會看到你開啟的頁面、你的大略位置與裝置類型，並設定 Cookie。它永遠看不到你在 Linux 裡輸入的內容或你的檔案。除非你允許，否則不會傳送任何資料。",
+    'consent.allow': "允許",
+    'consent.deny': "不用了，謝謝",
+    'consent.more': "隱私詳情",
 
     'status.starting': '啟動中…',
     'status.restoring': '還原中…',

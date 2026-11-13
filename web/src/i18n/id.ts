@@ -39,6 +39,13 @@ const id: Locale = {
     'foot.licenses': 'Lisensi',
     'foot.security': 'Catatan keamanan',
     'foot.source': 'Kode sumber di GitHub',
+    'foot.privacy': "Privasi",
+    'foot.analytics': "Pengaturan analitik",
+    'consent.label': "Pilihan analitik",
+    'consent.text': "Bolehkah kami menghitung kunjungan dengan Google Analytics? Google akan melihat halaman yang Anda buka, perkiraan lokasi dan jenis perangkat Anda, serta menyimpan cookie. Google tidak pernah melihat apa yang Anda ketik di Linux atau file Anda. Tidak ada yang dikirim kecuali Anda mengizinkannya.",
+    'consent.allow': "Izinkan",
+    'consent.deny': "Tidak, terima kasih",
+    'consent.more': "Detail privasi",
 
     'status.starting': 'Memulai…',
     'status.restoring': 'Memulihkan…',

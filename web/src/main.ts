@@ -9,9 +9,11 @@ import type { FromWorker, NetConfig, ToWorker } from './protocol';
 import { initGuides, LESSONS, LESSONS_DONE_KEY, lessonProgress } from './ui/guides';
 import { renderHelperFiles } from './ui/helper';
 import { applyDom, mountPickers, onLocaleChange, t, type Key } from './i18n';
+import { initConsent } from './consent';
 
 applyDom();
 mountPickers();
+initConsent();
 const applyMeta = () => {
   document.title = t('meta.title');
   document.querySelector('meta[name="description"]')?.setAttribute('content', t('meta.description'));
