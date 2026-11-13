@@ -349,10 +349,14 @@ function showWorkspace() {
   enter(workspace);
   requestAnimationFrame(() => { fit.fit(); term.focus(); });
 }
+// Every Start button on the start view (the cover and the closing section) boots the machine.
+const bootBtns = document.querySelectorAll<HTMLButtonElement>('[data-boot]');
+for (const b of bootBtns) b.addEventListener('click', () => bootBtn.click());
 function renderResume() {
   if (!worker) return;
   bootBtn.disabled = false;
   bootBtn.textContent = t('start.resume');
+  for (const b of bootBtns) b.textContent = t('start.resume');
   $('start-timing').textContent = t('start.running');
 }
 onLocaleChange(renderResume);

@@ -9,62 +9,265 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4f91'/%3E%3Cpath d='M8 11l6 5-6 5M16 22h8' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   </head>
   <body>
-    <!-- Start view: shown until the machine is started -->
+    <!-- Start view: the cover, then the document sections -->
     <section id="start" class="start" aria-labelledby="start-title">
       <div class="start-inner">
-        <header class="start-head">
-          <a class="wordmark" href="./" data-home>xiaonux</a>
-          <nav class="start-nav" aria-label="Project" data-i18n-aria-label="nav.project">
-            <a href="https://github.com/rosdyana/xiaonux">GitHub</a>
-            <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="nav.safe">Is it safe?</a>
-            <select class="lang" data-lang-picker aria-label="Language" data-i18n-aria-label="lang.label"></select>
-          </nav>
-        </header>
+        <div class="cover">
+          <header class="start-head">
+            <a class="wordmark" href="./" data-home>xiaonux</a>
+            <nav class="start-nav" aria-label="Project" data-i18n-aria-label="nav.project">
+              <a class="nav-anchor" href="#inside" data-i18n="nav.inside">What's inside</a>
+              <a class="nav-anchor" href="#uses" data-i18n="nav.uses">Use cases</a>
+              <a class="nav-anchor" href="#safety" data-i18n="nav.safety">Safety</a>
+              <a href="https://github.com/rosdyana/xiaonux">GitHub</a>
+              <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md" data-i18n="nav.safe">Is it safe?</a>
+              <select class="lang" data-lang-picker aria-label="Language" data-i18n-aria-label="lang.label"></select>
+            </nav>
+          </header>
 
-        <div class="start-main">
-          <div class="start-lede">
-            <h1 id="start-title" data-i18n="start.title">Real Debian Linux in your browser. Nothing to install.</h1>
-            <p class="lede-sub" data-i18n="start.sub">A full Linux machine runs inside this tab, on your computer. Practise the shell, run Python, inspect a suspicious file. Reset it whenever you like.</p>
-            <div class="start-action">
-              <button id="boot" class="btn btn-primary btn-large" type="button" data-i18n="start.boot">Start Linux</button>
-              <p id="start-timing" class="timing" data-i18n-html="start.timing">First start downloads about 17&nbsp;MB. After that it starts in under a second.</p>
+          <div class="start-main">
+            <div class="start-lede">
+              <h1 id="start-title" data-i18n="start.title">Real Debian Linux in your browser. Nothing to install.</h1>
+              <p class="lede-sub" data-i18n="start.sub">A full Linux machine runs inside this tab, on your computer. Practise the shell, run Python, inspect a suspicious file. Reset it whenever you like.</p>
+              <div class="start-action">
+                <button id="boot" class="btn btn-primary btn-large" type="button" data-i18n="start.boot">Start Linux</button>
+                <p id="start-timing" class="timing" data-i18n-html="start.timing">First start downloads about 17&nbsp;MB. After that it starts in under a second.</p>
+              </div>
+            </div>
+
+            <div class="sheet">
+              <p class="sheet-head"><span data-i18n="sheet.head">Guides</span><span data-i18n="sheet.headNote">Commands typed for you, checked when they run</span></p>
+              <ol class="sheet-rows" aria-label="Start with a guide" data-i18n-aria-label="sheet.label">
+                <li class="sheet-row" data-lesson="unix-basics">
+                  <div>
+                    <h2 data-i18n="card.unix.title">Learn Unix</h2>
+                    <p data-i18n="card.unix.desc">Files, pipes, permissions and processes, one command at a time.</p>
+                  </div>
+                  <button class="btn btn-quiet" type="button" data-try="unix-basics" data-i18n="card.try">Try it</button>
+                </li>
+                <li class="sheet-row" data-lesson="python">
+                  <div>
+                    <h2 data-i18n-html="card.python.title">Python &amp; packages</h2>
+                    <p data-i18n="card.python.desc">Python 3 with pip. numpy, pandas and more install without internet.</p>
+                  </div>
+                  <button class="btn btn-quiet" type="button" data-try="python" data-i18n="card.try">Try it</button>
+                </li>
+                <li class="sheet-row" data-lesson="triage">
+                  <div>
+                    <h2 data-i18n="card.triage.title">Security lab</h2>
+                    <p data-i18n-html="card.triage.desc">Upload a file and take it apart with <code>file</code>, <code>strings</code>, <code>yara</code> and <code>strace</code>.</p>
+                  </div>
+                  <button class="btn btn-quiet" type="button" data-try="triage" data-i18n="card.try">Try it</button>
+                </li>
+              </ol>
             </div>
           </div>
 
-          <div class="sheet">
-          <p class="sheet-head"><span data-i18n="sheet.head">Guides</span><span data-i18n="sheet.headNote">Commands typed for you, checked when they run</span></p>
-          <ol class="sheet-rows" aria-label="Start with a guide" data-i18n-aria-label="sheet.label">
-            <li class="sheet-row" data-lesson="unix-basics">
-              <div>
-                <h2 data-i18n="card.unix.title">Learn Unix</h2>
-                <p data-i18n="card.unix.desc">Files, pipes, permissions and processes, one command at a time.</p>
-              </div>
-              <button class="btn btn-quiet" type="button" data-try="unix-basics" data-i18n="card.try">Try it</button>
-            </li>
-            <li class="sheet-row" data-lesson="python">
-              <div>
-                <h2 data-i18n-html="card.python.title">Python &amp; packages</h2>
-                <p data-i18n="card.python.desc">Python 3 with pip. numpy, pandas and more install without internet.</p>
-              </div>
-              <button class="btn btn-quiet" type="button" data-try="python" data-i18n="card.try">Try it</button>
-            </li>
-            <li class="sheet-row" data-lesson="triage">
-              <div>
-                <h2 data-i18n="card.triage.title">Security lab</h2>
-                <p data-i18n-html="card.triage.desc">Upload a file and take it apart with <code>file</code>, <code>strings</code>, <code>yara</code> and <code>strace</code>.</p>
-              </div>
-              <button class="btn btn-quiet" type="button" data-try="triage" data-i18n="card.try">Try it</button>
-            </li>
-          </ol>
-          </div>
+          <dl class="fields" aria-label="About this machine" data-i18n-aria-label="fields.label">
+            <div><dt data-i18n="fields.machine.k">Machine</dt><dd data-i18n="fields.machine.v">Debian 13, riscv64</dd></div>
+            <div><dt data-i18n="fields.runs.k">Runs on</dt><dd data-i18n="fields.runs.v">Your computer, in this tab</dd></div>
+            <div><dt data-i18n="fields.net.k">Internet</dt><dd data-i18n="fields.net.v">Off until you choose</dd></div>
+            <div><dt data-i18n="fields.login.k">Login</dt><dd data-i18n-html="fields.login.v">User <code>root</code>, password <code>root</code></dd></div>
+          </dl>
         </div>
 
-        <ul class="facts" aria-label="How it works" data-i18n-aria-label="facts.label">
-          <li data-i18n="facts.tab">Runs in this tab, not on a server</li>
-          <li data-i18n="facts.files">Your files stay in this browser</li>
-          <li data-i18n="facts.net">Internet is off unless you turn it on</li>
-          <li data-i18n="facts.reset">Reset any time</li>
-        </ul>
+        <div class="doc-secs">
+          <section class="doc-sec" id="inside" aria-labelledby="inside-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="inside-title" data-i18n="inside.title">What's on the machine</h2>
+              <p class="doc-sec-note" data-i18n="inside.note">Installed and working with the internet off.</p>
+            </div>
+            <div class="doc-sec-body">
+              <div class="manifest-grid">
+                <div class="manifest-group">
+                  <h3 data-i18n="inside.g1">Shell and system</h3>
+                  <ul class="manifest">
+                    <li>bash <span data-i18n="inside.bash">shell</span></li>
+                    <li>coreutils <span data-i18n="inside.coreutils">files, text, pipes</span></li>
+                    <li>sudo <span data-i18n="inside.sudo">users and permissions</span></li>
+                    <li>jq <span data-i18n="inside.jq">JSON</span></li>
+                    <li>7zip <span data-i18n="inside.7zip">archives</span></li>
+                    <li>xxd <span data-i18n="inside.xxd">hex dumps</span></li>
+                  </ul>
+                </div>
+                <div class="manifest-group">
+                  <h3 data-i18n="inside.g2">Python, offline</h3>
+                  <ul class="manifest">
+                    <li>python3</li>
+                    <li>pip <span data-i18n="inside.pip">installs from a bundled wheel index</span></li>
+                    <li>numpy</li>
+                    <li>pandas</li>
+                    <li>cryptography</li>
+                    <li>pillow</li>
+                    <li>pyyaml</li>
+                  </ul>
+                </div>
+                <div class="manifest-group">
+                  <h3 data-i18n="inside.g3">Security tools</h3>
+                  <ul class="manifest">
+                    <li>file</li>
+                    <li>binutils-multiarch <span data-i18n="inside.binutils">objdump, readelf, strings</span></li>
+                    <li>strace</li>
+                    <li>ltrace</li>
+                    <li>gdb</li>
+                    <li>yara</li>
+                    <li>binwalk</li>
+                    <li>hexedit</li>
+                    <li>tcpdump</li>
+                    <li>nmap</li>
+                    <li>netcat</li>
+                    <li>python3-pefile</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="doc-aside" data-i18n="inside.aside">Only RISC-V Linux programs run here. Windows, x86 and ARM executables can be read and taken apart, but not run.</p>
+            </div>
+          </section>
+
+          <section class="doc-sec" id="uses" aria-labelledby="uses-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="uses-title" data-i18n="uses.title">What people use it for</h2>
+              <p class="doc-sec-note" data-i18n="uses.note">Examples from classes and security workshops. Each command runs as shown.</p>
+            </div>
+            <div class="doc-sec-body">
+              <div class="uses-group">
+                <div class="uses-head">
+                  <h3 data-i18n="uses.g1">Classrooms</h3>
+                  <button class="btn btn-quiet btn-small" type="button" data-try="unix-basics" data-i18n="uses.tryUnix">Try the Unix guide</button>
+                </div>
+                <ol class="uses">
+                  <li class="use-row">
+                    <h4 data-i18n="uses.c1.title">Zero-install lab</h4>
+                    <p data-i18n="uses.c1.desc">Chromebooks and locked-down PCs get a real Linux shell with no install and no account. Reset gives every student a clean machine.</p>
+                    <div class="cmd"><code>pwd &amp;&amp; id</code></div>
+                  </li>
+                  <li class="use-row">
+                    <h4 data-i18n="uses.c2.title">Text-processing drills</h4>
+                    <p data-i18n="uses.c2.desc">Count status codes in a log, pull out a field with awk, sort the unique values.</p>
+                    <div class="cmd"><code>awk '{print $9}' access.log | sort | uniq -c | sort -rn | head</code></div>
+                  </li>
+                  <li class="use-row">
+                    <h4 data-i18n="uses.c3.title">RISC-V assembly</h4>
+                    <p data-i18n="uses.c3.desc">objdump and gdb read the binaries in the machine, so students see the instructions a compiler produced.</p>
+                    <div class="cmd"><code>objdump -d /bin/true | head -40</code></div>
+                  </li>
+                </ol>
+              </div>
+              <div class="uses-group">
+                <div class="uses-head">
+                  <h3 data-i18n="uses.g2">Security learners</h3>
+                  <button class="btn btn-quiet btn-small" type="button" data-try="triage" data-i18n="uses.trySec">Try the security guide</button>
+                </div>
+                <ol class="uses">
+                  <li class="use-row">
+                    <h4 data-i18n="uses.s1.title">Log forensics</h4>
+                    <p data-i18n="uses.s1.desc">Find the source addresses of failed logins in an uploaded auth.log.</p>
+                    <div class="cmd"><code>grep 'Failed password' /root/uploads/auth.log | awk '{print $(NF-3)}' | sort | uniq -c | sort -rn | head</code></div>
+                  </li>
+                  <li class="use-row">
+                    <h4 data-i18n="uses.s2.title">YARA workshop</h4>
+                    <p data-i18n="uses.s2.desc">Write a rule for a sample and scan a folder with it.</p>
+                    <div class="cmd"><code>yara -s dropper.yar .</code></div>
+                  </li>
+                  <li class="use-row">
+                    <h4 data-i18n="uses.s3.title">Static deobfuscation</h4>
+                    <p data-i18n="uses.s3.desc">Decode the hidden part of a shell dropper without running it.</p>
+                    <div class="cmd"><code>grep -o '[A-Za-z0-9+/=]\{20,\}' sample.sh | base64 -d; echo</code></div>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </section>
+
+          <section class="doc-sec" id="how" aria-labelledby="how-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="how-title" data-i18n="how.title">How it works</h2>
+              <p class="doc-sec-note" data-i18n="how.note">One machine, inside one tab, on your computer.</p>
+            </div>
+            <div class="doc-sec-body how-body">
+              <div class="layers">
+                <div class="layer">
+                  <p class="layer-name" data-i18n="how.l1.name">Your browser tab</p>
+                  <p class="layer-desc" data-i18n="how.l1.desc">The browser's own sandbox, on your computer.</p>
+                  <div class="layer layer--sheet">
+                    <p class="layer-name" data-i18n="how.l2.name">WebAssembly</p>
+                    <p class="layer-desc" data-i18n="how.l2.desc">The emulator, compiled to run in the page.</p>
+                    <div class="layer">
+                      <p class="layer-name" data-i18n="how.l3.name">Emulated RISC-V CPU</p>
+                      <p class="layer-desc" data-i18n="how.l3.desc">Guest code never runs on your processor.</p>
+                      <div class="layer layer--sheet">
+                        <p class="layer-name" data-i18n="how.l4.name">Debian 13</p>
+                        <p class="layer-desc" data-i18n="how.l4.desc">Your files are kept in this browser (OPFS).</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ol class="how-notes">
+                <li>
+                  <h3 data-i18n="how.n1.title">Starts from a snapshot</h3>
+                  <p data-i18n="how.n1.desc">The machine resumes from a saved state, so a warm prompt arrives in about half a second.</p>
+                </li>
+                <li>
+                  <h3 data-i18n="how.n2.title">Your changes stay</h3>
+                  <p data-i18n="how.n2.desc">Files you make are saved in this browser and are there next time.</p>
+                </li>
+                <li>
+                  <h3 data-i18n="how.n3.title">Reset is one button</h3>
+                  <p data-i18n="how.n3.desc">It deletes your changes and returns to the shipped image.</p>
+                </li>
+                <li>
+                  <h3 data-i18n="how.n4.title">Internet is your choice</h3>
+                  <p data-i18n="how.n4.desc">Off by default. Turn it on through the small xiaonux-net helper on your computer, or a free relay limited to pip, apt and GitHub.</p>
+                </li>
+              </ol>
+            </div>
+          </section>
+
+          <section class="doc-sec" id="safety" aria-labelledby="safety-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="safety-title" data-i18n="safety2.title">Safety, plainly</h2>
+              <p class="doc-sec-note" data-i18n="safety2.note">What is isolated, and what isn't.</p>
+            </div>
+            <div class="doc-sec-body">
+              <div class="ledgers">
+                <div class="ledger-col">
+                  <h3 data-i18n="safety2.isoH">Isolated</h3>
+                  <ul class="ledger">
+                    <li data-i18n="safety2.iso1">Programs run on an emulated RISC-V processor inside WebAssembly, never on your computer's processor.</li>
+                    <li data-i18n="safety2.iso2">The machine can't see your files or devices. It only gets what you upload.</li>
+                    <li data-i18n-html="safety2.iso3">Uploads land in <code>/root/uploads</code> and are never marked executable.</li>
+                    <li data-i18n="safety2.iso4">Nothing you type or store is sent to a server.</li>
+                  </ul>
+                </div>
+                <div class="ledger-col">
+                  <h3 data-i18n="safety2.notH">Not isolated</h3>
+                  <ul class="ledger">
+                    <li data-i18n="safety2.not1">With the internet on, anything you run can reach the internet from your IP address.</li>
+                    <li data-i18n="safety2.not2">It is not a hardened malware lab. Don't analyse targeted or high-value samples here.</li>
+                    <li data-i18n="safety2.not3">Don't put passwords or secrets in the machine.</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="doc-aside" data-i18n-html="safety2.aside">Read the full <a href="https://github.com/rosdyana/xiaonux/blob/main/SECURITY.md">security notes</a>.</p>
+            </div>
+          </section>
+
+          <section class="doc-sec" id="source" aria-labelledby="source-title">
+            <div class="doc-sec-label">
+              <h2 class="doc-sec-title" id="source-title" data-i18n="oss.title">Open source</h2>
+              <p class="doc-sec-note" data-i18n="oss.note">Apache-2.0. Read it, run it, change it.</p>
+            </div>
+            <div class="doc-sec-body">
+              <p data-i18n="oss.p1">xiaonux is free and open source. The emulator, the page and the image build are all in one repository.</p>
+              <p data-i18n-html="oss.p2">Guides are small JSON files. If you teach with it, <a href="https://github.com/rosdyana/xiaonux/blob/main/docs/use-cases.md#contributing-lessons">write a guide</a> for your class.</p>
+              <div class="oss-actions">
+                <button class="btn btn-primary btn-large" type="button" data-boot data-i18n="start.boot">Start Linux</button>
+                <a href="https://github.com/rosdyana/xiaonux" data-i18n="foot.source">Source on GitHub</a>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <footer class="start-foot">
           <span data-i18n-html="foot.license">Open source, <a href="https://github.com/rosdyana/xiaonux/blob/main/LICENSE">Apache-2.0</a></span>
@@ -126,6 +329,7 @@
               <span data-i18n="guides.field">Guide</span>
               <select id="lesson-select"></select>
             </label>
+            <p data-i18n-html="guides.login">If the machine asks you to log in, the user is <code>root</code> and the password is <code>root</code>.</p>
             <p class="hint" data-i18n-html="guides.hint">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> to move between the terminal and this guide.</p>
             <p id="lesson-intro" class="lesson-intro"></p>
             <ol id="lesson-steps" class="steps"></ol>

@@ -88,15 +88,16 @@ p { text-wrap: pretty; }
 .btn-small { font-size: 13px; padding: 6px 10px; }
 
 /* ---------------------------------------------------------------- start view */
-.start { min-height: 100%; display: flex; }
+.start { display: block; }
 .start-inner {
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 24px 32px 32px;
   display: flex;
   flex-direction: column;
-  gap: 40px;
 }
+/* The cover is the first screen; the document sections follow below it. */
+.cover { display: flex; flex-direction: column; }
 .start-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .wordmark { font: 700 19px/1 var(--sans); letter-spacing: -0.01em; color: var(--blue); text-decoration: none; }
 .start-head .wordmark { color: var(--ink); }
@@ -106,7 +107,7 @@ p { text-wrap: pretty; }
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   gap: 56px;
   align-items: center;
-  flex: 1;
+  padding-block: clamp(40px, 9vh, 96px) 56px;
 }
 .start-lede h1 {
   font-size: clamp(34px, 4.6vw, 56px);
@@ -170,20 +171,97 @@ p { text-wrap: pretty; }
 .sheet-row h2 { font-size: 19px; line-height: 1.3; margin: 0 0 4px; letter-spacing: -0.01em; }
 .sheet-row p { margin: 0; color: var(--ink-2); font-size: 14.5px; max-width: 46ch; }
 
-.facts {
-  list-style: none;
+/* The field row at the foot of the cover: the machine's facts, ruled like a worksheet header. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
-  padding: 16px 0 0;
-  border-top: 1px solid var(--rule);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 32px;
-  font-size: 14px;
-  color: var(--ink-2);
+  border-top: 2px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
 }
-.facts li { display: flex; align-items: center; gap: 8px; }
-.facts li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--rule-strong); flex: none; }
-.start-foot { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13px; color: var(--ink-2); }
+.fields > div { min-width: 0; padding: 12px 16px 14px; }
+.fields > div + div { border-left: 1px solid var(--rule); }
+.fields dt { font: 600 13px/1.2 var(--sans); color: var(--ink-2); margin: 0 0 4px; }
+.fields dd { margin: 0; font-size: 15px; line-height: 1.35; color: var(--ink); }
+
+/* Document sections below the cover: a label column beside the content. */
+.doc-secs { display: block; }
+.doc-sec {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  column-gap: 56px;
+  align-items: start;
+  margin-top: 88px;
+  padding-top: 24px;
+  border-top: 2px solid var(--rule-strong);
+  scroll-margin-top: 24px;
+}
+/* The label (title and note) sticks while its content scrolls past, on wide screens only. */
+.doc-sec-label { min-width: 0; }
+.doc-sec-title { font: 700 22px/1.2 var(--sans); letter-spacing: -0.01em; color: var(--ink); margin: 0; }
+.doc-sec-note { font-size: 14px; line-height: 1.5; color: var(--ink-2); max-width: 24ch; margin: 8px 0 0; }
+.doc-sec-body { min-width: 0; font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+.doc-sec-body > p { max-width: 64ch; margin: 0 0 12px; }
+.doc-sec-body > .doc-aside { margin: 20px 0 0; font-size: 14px; }
+@media (min-width: 960px) { .doc-sec-label { position: sticky; top: 24px; align-self: start; } }
+
+/* What's on the machine: three ruled manifests. */
+.manifest-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0 32px; }
+.manifest-group { min-width: 0; margin-bottom: 24px; }
+.manifest-group h3 { font: 600 15px/1.3 var(--sans); color: var(--ink); margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--rule-strong); }
+.manifest { list-style: none; margin: 0; padding: 0; }
+.manifest li {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  font: 13.5px/1.4 var(--mono);
+  color: var(--ink);
+}
+.manifest li span { display: block; font: 13px/1.4 var(--sans); color: var(--ink-2); }
+
+/* What people use it for: ruled rows, each with its command on the worksheet. */
+.uses-group + .uses-group { margin-top: 40px; }
+.uses-head {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--rule-strong);
+}
+.uses-head h3 { font: 600 17px/1.3 var(--sans); color: var(--ink); margin: 0; }
+.uses { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.use-row { min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+.use-row h4 { font: 600 15px/1.3 var(--sans); color: var(--ink); margin: 0 0 2px; }
+.use-row p { font-size: 14.5px; line-height: 1.5; color: var(--ink-2); max-width: 60ch; margin: 0 0 10px; }
+
+/* How it works: nested layers on the left, ruled notes on the right. */
+.how-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.layers { min-width: 0; background: var(--paper); }
+.layer { background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 2px; padding: 12px 14px 14px; }
+.layer--sheet { background: var(--sheet); }
+.layer .layer { margin-top: 12px; }
+.layer-name { font: 600 14px/1.3 var(--sans); color: var(--ink); margin: 0; }
+.layer-desc { font-size: 13px; line-height: 1.45; color: var(--ink-2); margin: 2px 0 0; }
+.how-notes { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.how-notes li { padding: 14px 0; border-bottom: 1px solid var(--rule); }
+.how-notes li:first-child { border-top: 2px solid var(--rule-strong); }
+.how-notes h3 { font: 600 15px/1.3 var(--sans); color: var(--ink); margin: 0 0 4px; }
+.how-notes p { font-size: 14px; line-height: 1.5; color: var(--ink-2); margin: 0; }
+
+/* Safety, plainly: two ledger columns. */
+.ledgers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 40px; }
+.ledger-col { min-width: 0; }
+.ledger-col h3 { font: 600 15px/1.3 var(--sans); color: var(--ink); margin: 0; padding-bottom: 8px; border-bottom: 2px solid var(--rule-strong); }
+.ledger { list-style: none; margin: 0; padding: 0; }
+.ledger li { font-size: 14.5px; line-height: 1.5; color: var(--ink-2); padding: 12px 0; border-bottom: 1px solid var(--rule); }
+
+/* Open source: the closing Start action. */
+.oss-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 24px; }
+
+.start-foot {
+  display: flex; flex-wrap: wrap; gap: 8px 24px;
+  margin-top: 88px;
+  padding: 16px 0 32px;
+  border-top: 1px solid var(--rule);
+  font-size: 13px; color: var(--ink-2);
+}
 
 /* ---------------------------------------------------------------- workspace */
 .workspace { height: 100dvh; display: flex; flex-direction: column; background: var(--sheet); }
@@ -469,9 +547,22 @@ select:hover, input[type="text"]:hover { border-color: var(--blue); }
 .turnstile { position: fixed; right: 16px; bottom: 16px; z-index: 10; }
 
 /* ---------------------------------------------------------------- narrow */
+@media (max-width: 960px) {
+  .how-body { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+}
 @media (max-width: 860px) {
   .start-main { grid-template-columns: 1fr; gap: 32px; align-items: start; }
   .start-lede h1 { max-width: 16ch; }
+  .nav-anchor { display: none; }
+  .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fields > div:nth-child(odd) { border-left: 0; }
+  .fields > div:nth-child(n + 3) { border-top: 1px solid var(--rule); }
+  .doc-sec { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  .ledgers { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+}
+@media (max-width: 480px) {
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .fields > div + div { border-left: 0; border-top: 1px solid var(--rule); }
 }
 @media (max-width: 959px) {
   .drawer {
@@ -484,16 +575,17 @@ select:hover, input[type="text"]:hover { border-color: var(--blue); }
   .stats { display: none; }
 }
 @media (max-width: 640px) {
-  .start-inner { padding: 16px 16px 24px; gap: 28px; }
+  .start-inner { padding: 16px; }
   .start-nav { gap: 14px; }
   .lede-sub { font-size: 16px; margin-bottom: 24px; }
   .start-action .btn-large { width: 100%; }
+  .doc-sec { margin-top: 56px; }
+  .start-foot { margin-top: 56px; }
   .sheet-rows { background:
     linear-gradient(90deg, transparent 41px, var(--margin) 41px, var(--margin) 42px, transparent 42px); }
   .sheet-head { padding-left: 52px; }
   .sheet-row { grid-template-columns: 28px 1fr; gap: 4px 22px; padding: 16px 16px 16px 0; }
   .sheet-row .btn { grid-column: 2; justify-self: start; margin-top: 8px; }
-  .facts { flex-direction: column; }
   .bar { gap: 4px; padding-left: 10px; flex-wrap: nowrap; }
   .status .long { display: none; }
   .chip { padding: 6px 10px; }

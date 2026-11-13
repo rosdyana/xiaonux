@@ -99,6 +99,7 @@ spacing:
   block: "24px"
   page: "32px"
   section: "40px"
+  chapter: "88px"
   column-gap: "56px"
 components:
   button-primary:
@@ -261,13 +262,13 @@ The terminal palette (xterm `THEMES` in `web/src/main.ts`) is derived from these
 
 Two modes share one sheet.
 
-**Start view:** a centred column, max 1120px, padded 24/32px. A head row (wordmark left, two links right), then a two-column grid (1.05fr / 1fr, 56px gap, vertically centred): value line, lede and Start action on the left, the three-row worksheet on the right. A facts row under a 1px rule, then a footer of links. Below 860px the grid stacks (32px gap); below 640px padding drops to 16px, the Start button goes full width, and the worksheet's margin narrows (numbers column 28px, margin rule at 41px).
+**Start view:** a centred column, max 1120px, padded 24/32px. The cover is the first screen, sized by its content (hero padded `clamp(40px, 9vh, 96px)` above, 56px below): a head row (wordmark left; three section anchors, hidden below 860px, then GitHub, the safety link and the language picker), a two-column grid (1.05fr / 1fr, 56px gap, vertically centred) with the value line, lede and Start action on the left and the three-row worksheet on the right, and a ruled field row at its foot (machine, runs on, internet, license). Below the cover, document sections each take a 220px label column (title and short note, sticky from 960px) beside a content column, separated by 2px `rule-strong` rules and 88px `chapter` gaps (56px at 640px and below): What's on the machine (package manifests), What people use it for (use-case rows, each with its command), How it works (nested layer diagram beside ruled notes), Safety, plainly (two-column ledger), and Open source (closing Start action). Then a footer under a 1px rule. Below 860px the sections and the worksheet grid stack (16px and 32px gaps); below 640px padding drops to 16px, the Start button goes full width, and the worksheet's margin narrows (numbers column 28px, margin rule at 41px).
 
 **Workspace:** full viewport height (`100dvh`). A 48px blue bar; under it the terminal fills everything left of the drawer. The drawer is 420px (max 38vw) and animates its width open/closed. Below 960px the drawer overlays the terminal from the right (full width up to 420px) with the floating shadow, and the MIPS readout hides. Below 640px the bar shrinks the wordmark to its logo tile and drops button labels (icons only), and the status cell ellipsises. The wordmark is the Home link everywhere: in the workspace it returns to the start view through a `#machine` history entry (the browser's Back does the same), the machine keeps running, and the start view's Start button becomes "Return to Linux". The language picker lives in the start head, the drawer's tab row, and the Licenses head, never in the bar. On coarse pointers a 44px touch-key row appears under the terminal, its right edge faded to show it scrolls.
 
 **Document view (Licenses):** centred column, max 1040px, same head row as the start view, generous section spacing (48px between groups), tables in a bordered scroll wrapper.
 
-**Rhythm:** spacing comes from a small set of steps (4, 8, 12, 16, 20, 24, 32, 40, 56px). Worksheet rows are 20px tall-padded; drawer steps 12px.
+**Rhythm:** spacing comes from a small set of steps (4, 8, 12, 16, 20, 24, 32, 40, 56px), plus the 88px `chapter` gap between the start view's cover and its document sections (56px at 640px and below). Worksheet rows are 20px tall-padded; drawer steps 12px.
 
 ## Elevation & Depth
 
