@@ -63,7 +63,7 @@ dev:            ## dev server with COOP/COEP on http://localhost:5180
 	cd web && pnpm install --frozen-lockfile && pnpm dev
 
 serve:          ## production build + preview on :5180 (no live reload; use for long tests)
-	cd web && pnpm build && pnpm exec vite preview --port 5180 --strictPort
+	cd web && VITE_TEST_HOOKS=1 pnpm build && pnpm exec vite preview --port 5180 --strictPort
 
 helper-fetch:   ## point the page's helper downloads at the newest GitHub release (helper-v* tag)
 	helper/fetch-release.sh

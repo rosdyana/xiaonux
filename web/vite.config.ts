@@ -1,6 +1,7 @@
 import { createReadStream, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { csp } from './csp.mjs';
 
 // VM files (WASM, firmware, kernel, disk blocks) live in ../dist/vm and are
 // served at /vm/ without going through Vite's module pipeline.
@@ -54,14 +55,21 @@ const COI = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
-export default defineConfig({
-  plugins: [serveVm()],
-  server: { port: 5180, headers: COI },
-  preview: { port: 5180, headers: COI },
-  worker: { format: 'es' },
-  build: {
-    rollupOptions: {
-      input: { main: resolve(__dirname, 'index.html'), licenses: resolve(__dirname, 'licenses.html') },
+export default defineConfig(({ mode }) => {
+  // The relay URL is baked into the build from web/.env.local or the process
+  // environment; `vite preview` must allow it in connect-src like the deploy does.
+  const relayUrl = loadEnv(mode, process.cwd(), 'VITE_').VITE_RELAY_URL ?? '';
+  return {
+    plugins: [serveVm()],
+    server: { port: 5180, headers: COI },
+    // The policy is applied to preview (what `make serve` tests), not to the
+    // dev server: Vite's dev client needs inline scripts and eval-style HMR.
+    preview: { port: 5180, headers: { ...COI, 'Content-Security-Policy': csp(relayUrl) } },
+    worker: { format: 'es' as const },
+    build: {
+      rollupOptions: {
+        input: { main: resolve(__dirname, 'index.html'), licenses: resolve(__dirname, 'licenses.html') },
+      },
     },
-  },
+  };
 });

@@ -29,6 +29,10 @@ const params = new URLSearchParams(location.search);
 // during a production build; MODE is `development` only for the dev server.
 const IS_DEV_SERVER = import.meta.env.MODE === 'development';
 const devParam = (k: string) => (IS_DEV_SERVER ? params.get(k) : null);
+// The window.xiaonux* hooks (type into the VM, read the terminal, stats) are
+// for tests and benchmarks: only the dev server and builds made with
+// VITE_TEST_HOOKS=1 (`make serve`) have them, never a published page.
+const TEST_HOOKS = IS_DEV_SERVER || import.meta.env.VITE_TEST_HOOKS === '1';
 const BOOT_URL = (() => {
   const fallback = '/vm/boot.json';
   const p = devParam('boot');
@@ -375,7 +379,7 @@ function mark(name: string) {
     setStatus(name === 'restore' ? 'status.restoring' : 'status.booting');
   }
   console.info(`[xiaonux] ${name} at ${marks[name]} ms`);
-  (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched };
+  if (TEST_HOOKS) (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched };
 }
 
 const PROMPT = /(?:[#$]|>>>) ?$/;
@@ -483,7 +487,7 @@ function onWorker(m: FromWorker) {
     case 'stats':
       statsEl.textContent = `${m.mips} MIPS`;
       statsEl.title = t('stats.title', { heap: m.heapMb, mb: (bytesFetched / 2 ** 20).toFixed(1) });
-      (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats, jit: m.jit };
+      if (TEST_HOOKS) (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched, mips: m.mips, heapMb: m.heapMb, outBytes: m.outBytes, disk: diskStats, jit: m.jit };
       break;
     case 'disk':
       diskStats = m.stats as unknown as Record<string, unknown>;
@@ -538,7 +542,7 @@ function onWorker(m: FromWorker) {
     case 'jit-export': {
       let bin = '';
       for (let i = 0; i < m.bytes.length; i += 0x8000) bin += String.fromCharCode(...m.bytes.subarray(i, i + 0x8000));
-      (window as unknown as { xiaonuxJitBundle: unknown }).xiaonuxJitBundle = { build: m.build, b64: btoa(bin) };
+      if (TEST_HOOKS) (window as unknown as { xiaonuxJitBundle: unknown }).xiaonuxJitBundle = { build: m.build, b64: btoa(bin) };
       break;
     }
     case 'saved':
@@ -716,13 +720,15 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => send({ type: 'save', reason: 'pagehide' }));
 
 // ------------------------------------------------------------ test hooks
-(window as unknown as { xiaonuxSave: () => void }).xiaonuxSave = () => send({ type: 'save', reason: 'manual' });
-(window as unknown as { xiaonuxJitExport: () => void }).xiaonuxJitExport = () => send({ type: 'jit-export' });
-(window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {
-  const b = term.buffer.active;
-  const end = b.baseY + b.cursorY + 1;
-  const lines: string[] = [];
-  for (let i = Math.max(0, end - n); i < end; i++) lines.push(b.getLine(i)?.translateToString(true) ?? '');
-  return lines.join('\n');
-};
-(window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = type;
+if (TEST_HOOKS) {
+  (window as unknown as { xiaonuxSave: () => void }).xiaonuxSave = () => send({ type: 'save', reason: 'manual' });
+  (window as unknown as { xiaonuxJitExport: () => void }).xiaonuxJitExport = () => send({ type: 'jit-export' });
+  (window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {
+    const b = term.buffer.active;
+    const end = b.baseY + b.cursorY + 1;
+    const lines: string[] = [];
+    for (let i = Math.max(0, end - n); i < end; i++) lines.push(b.getLine(i)?.translateToString(true) ?? '');
+    return lines.join('\n');
+  };
+  (window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = type;
+}
