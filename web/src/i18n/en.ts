@@ -150,7 +150,7 @@ const strings = {
   'foot.privacy': "Privacy",
   'foot.analytics': "Analytics settings",
   'consent.label': "Analytics choice",
-  'consent.text': "Can we count visits with Google Analytics? It would see which pages you open, your rough location and device type, and set cookies. It never sees what you type in Linux or your files. Nothing is sent unless you allow it.",
+  'consent.text': "Can we count visits with Google Analytics? It would see which pages you open, your rough location and device type, and set cookies. It never sees what you type in Linux or your files. Nothing is sent to Google unless you allow it.",
   'consent.allow': "Allow",
   'consent.deny': "No thanks",
   'consent.more': "Privacy details",

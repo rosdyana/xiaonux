@@ -10,11 +10,12 @@ export function csp(relayUrl = '') {
   const relay = origin ? [origin, origin.replace(/^http/, 'ws')] : [];
   return [
     "default-src 'self'",
-    "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://www.googletagmanager.com",
+    // static.cloudflareinsights.com: the Cloudflare Web Analytics beacon, injected by Cloudflare Pages
+    "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://www.googletagmanager.com https://static.cloudflareinsights.com",
     "worker-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com",
-    ["connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com", ...relay].join(' '),
+    ["connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://cloudflareinsights.com", ...relay].join(' '),
     "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'none'",

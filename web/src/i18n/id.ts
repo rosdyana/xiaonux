@@ -125,7 +125,7 @@ const id: Locale = {
     'foot.privacy': "Privasi",
     'foot.analytics': "Pengaturan analitik",
     'consent.label': "Pilihan analitik",
-    'consent.text': "Bolehkah kami menghitung kunjungan dengan Google Analytics? Google akan melihat halaman yang Anda buka, perkiraan lokasi dan jenis perangkat Anda, serta menyimpan cookie. Google tidak pernah melihat apa yang Anda ketik di Linux atau file Anda. Tidak ada yang dikirim kecuali Anda mengizinkannya.",
+    'consent.text': "Bolehkah kami menghitung kunjungan dengan Google Analytics? Google akan melihat halaman yang Anda buka, perkiraan lokasi dan jenis perangkat Anda, serta menyimpan cookie. Google tidak pernah melihat apa yang Anda ketik di Linux atau file Anda. Tidak ada yang dikirim ke Google kecuali Anda mengizinkannya.",
     'consent.allow': "Izinkan",
     'consent.deny': "Tidak, terima kasih",
     'consent.more': "Detail privasi",

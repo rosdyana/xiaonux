@@ -2,7 +2,17 @@
 
 xiaonux runs on your own computer, inside your browser tab. There is no account and no server running your machine. This page lists everything that does leave your browser, and everything it keeps.
 
-## Analytics (only if you allow it)
+## Analytics
+
+### Cloudflare Web Analytics (every visit)
+
+The site's host, Cloudflare, counts page views with **Cloudflare Web Analytics**. It runs on every visit, without asking, through a small script Cloudflare adds to the page.
+
+- It sends Cloudflare the page you opened, the site that linked you here, your browser and device type, your country, and how fast the page loaded.
+- Cloudflare says it uses **no cookies and no local storage** and does not track you across sites or from one visit to the next. See [Cloudflare's Web Analytics privacy notes](https://www.cloudflare.com/web-analytics/).
+- It **never** receives what you type in the terminal, your commands, or your files.
+
+### Google Analytics (only if you allow it)
 
 The first time you visit, xiaonux asks whether it may count visits with **Google Analytics**, through Google Tag Manager.
 
