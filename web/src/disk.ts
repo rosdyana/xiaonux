@@ -212,6 +212,14 @@ export class ChunkDisk {
   changedSinceSave = false;
   /** called after every overlay write (the worker schedules saves) */
   onWrite: () => void = () => {};
+  /**
+   * Whether changes survive a reload: 'opfs' = yes; 'other-tab' = another tab
+   * holds the storage files (only one tab can); 'unavailable' = the browser
+   * gave no storage, so this tab runs on an in-memory disk.
+   */
+  persistence: 'opfs' | 'other-tab' | 'unavailable' = 'unavailable';
+  /** Set once a reset starts: late chunk deliveries and writes are dropped. */
+  private frozen = false;
 
   constructor(
     private mod: DiskModule,
@@ -247,8 +255,10 @@ export class ChunkDisk {
     const nClusters = (m.n_blocks * m.block_size) / CLUSTER;
     try {
       this.overlay = await opfsOverlay(`overlay-${this.id}`, nClusters);
+      this.persistence = 'opfs';
     } catch (e) {
       this.onEvent(`OPFS unavailable (${e}); changes won't survive a reload`);
+      this.persistence = (e as DOMException)?.name === 'NoModificationAllowedError' ? 'other-tab' : 'unavailable';
       this.overlay = memoryOverlay();
     }
     this.stats.overlayBackend = this.overlay.backend;
@@ -283,6 +293,7 @@ export class ChunkDisk {
   record = false;
 
   fetchChunk = (block: number, hashIndex: number) => {
+    if (this.frozen) return;
     const hash = this.manifest.hashes[hashIndex];
     const url = `${this.base}chunks/${hash}.br`;
     if (this.record) (this.stats.fetchOrder ??= []).push(hashIndex);
@@ -290,6 +301,7 @@ export class ChunkDisk {
     (fromBundle ? fromBundle.then((b) => b ?? this.getChunk(url)) : this.getChunk(url))
       .then((bytes) => this.deliver(block, bytes))
       .catch((e) => {
+        if (this.frozen) return;
         this.stats.errors++;
         this.onEvent(`chunk ${block}: ${e}`);
         this.mod._blk_chunk_loaded(block, 0, 0);
@@ -300,6 +312,9 @@ export class ChunkDisk {
     this.overlay.read(cluster, this.mod.HEAPU8.subarray(ptr, ptr + CLUSTER));
 
   overlayWrite = (cluster: number, ptr: number) => {
+    // After a reset starts, nothing may reach the (now empty) overlay: a write
+    // that waited on a chunk download would put a stale cluster into it.
+    if (this.frozen) return true;
     this.changedSinceSave = true;
     const isNew = !this.overlay.has(cluster);
     this.overlay.write(cluster, this.mod.HEAPU8.subarray(ptr, ptr + CLUSTER));
@@ -311,6 +326,7 @@ export class ChunkDisk {
       }, 500);
     }
     this.onWrite();
+    return true;
   };
 
   event = (kind: number, block: number, value: number) => {
@@ -382,6 +398,7 @@ export class ChunkDisk {
   }
 
   private deliver(block: number, bytes: Uint8Array) {
+    if (this.frozen) return;
     const p = this.mod._malloc(bytes.length || 1);
     this.mod.HEAPU8.set(bytes, p);
     this.mod._blk_chunk_loaded(block, p, bytes.length);
@@ -436,6 +453,15 @@ export class ChunkDisk {
 
   get canSaveSnapshots() {
     return this.overlay.backend === 'opfs';
+  }
+
+  /**
+   * Stop touching the overlay for good: call before reset(). Chunk downloads
+   * still in flight are dropped, so a guest write waiting on one can't finish
+   * into the emptied overlay. Harmless because the page reloads after a reset.
+   */
+  freeze() {
+    this.frozen = true;
   }
 
   // Delete the user's changes. The VM must be restarted afterwards.

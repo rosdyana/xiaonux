@@ -320,16 +320,56 @@ function setStatus(what: Key | (() => void), vars: Record<string, string | numbe
 }
 onLocaleChange(() => statusDraw());
 
+/** Set when this tab's changes won't be kept (the worker's 'disk-mode'); null = they are. */
+let notSaved: Key | null = null;
+const RESET_REASONS: Record<string, Key> = {
+  'other-tab': 'reset.reason.other-tab',
+  unavailable: 'reset.reason.unavailable',
+  starting: 'reset.reason.starting',
+};
+
+/** A reset that did not happen: say so, and let the user try again. */
+function resetFailed(reason: string) {
+  const why = RESET_REASONS[reason] ?? RESET_REASONS.unavailable;
+  setStatus(() => {
+    statusEl.textContent = t('status.resetFailed', { reason: t(why) });
+    statusEl.title = '';
+  });
+  statusEl.dataset.state = 'error';
+  resetBtn.disabled = false;
+}
+
+/** A worker failed to start or died: show why, drop it, and let Start and Reset be used again. */
+function workerFailed(w: Worker, message: string) {
+  w.terminate();
+  if (worker === w) worker = null; // else boot() would return early
+  setStatus('status.error', { message: message || 'the machine failed to start' });
+  statusEl.dataset.state = 'error';
+  resetBtn.disabled = false;
+  bootBtn.disabled = false;
+}
+
+/** The guide checks refer to files that are now gone. Only after a reset really happened. */
+function resetDone() {
+  store.set(LESSONS_DONE_KEY, '{}');
+  location.reload();
+}
+
 function mark(name: string) {
   if (marks[name] !== undefined) return;
   marks[name] = Math.round(performance.now() - tBoot);
   if (name === 'prompt') {
     const s = (marks.prompt / 1000).toFixed(2);
+    // The not-saved notice must outlive "Ready in N s": it is the one thing the user needs to know.
     setStatus(() => {
       statusEl.innerHTML = t('status.ready', { s }); // our own markup
       statusEl.title = t('status.readyTitle');
+      if (notSaved) {
+        statusEl.append(` · ${t(notSaved)}`);
+        statusEl.title = t(notSaved);
+      }
     });
-    statusEl.dataset.state = 'ready';
+    statusEl.dataset.state = notSaved ? 'error' : 'ready';
     store.set(LAST_KEY, String(marks.prompt));
   } else if (name === 'restore' || name === 'vm') {
     setStatus(name === 'restore' ? 'status.restoring' : 'status.booting');
@@ -411,10 +451,18 @@ async function boot(forceCold = false) {
   tBoot = performance.now();
   marks = {};
   bytesFetched = 0;
+  notSaved = null;
   setStatus('status.starting');
   statusEl.dataset.state = '';
   worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e: MessageEvent<FromWorker>) => onWorker(e.data);
+  worker.onerror = (e) => {
+    // Fatal only until the machine is up: a stray error later must not kill a
+    // running machine and its unsaved work (errors in the run loop arrive as
+    // {type:'error'} and are shown by onWorker).
+    if (marks.vm !== undefined || marks.restore !== undefined) console.error('[xiaonux] worker error', e.message);
+    else workerFailed(e.target as Worker, e.message);
+  };
   send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, forceCold: forceCold || params.has('cold'), record: params.has('record'), net: netConfig(), jit: params.get('jit') !== '0', jitCheck: params.get('jit') === 'check' });
 }
 
@@ -496,9 +544,24 @@ function onWorker(m: FromWorker) {
     case 'saved':
       console.info(`[xiaonux] saved machine (${m.reason}) ${(m.bytes / 2 ** 20).toFixed(1)} MB in ${m.ms} ms`);
       break;
+    case 'disk-mode':
+      notSaved = m.persistent ? null : m.reason === 'other-tab' ? 'status.notSaved' : 'status.notSavedNoStorage';
+      if (notSaved) {
+        // Show it now; "Ready in N s" re-applies it (see mark()).
+        const key = notSaved;
+        setStatus(() => {
+          statusEl.textContent = t(key);
+          statusEl.title = t(key);
+        });
+        statusEl.dataset.state = 'error';
+      }
+      break;
     case 'reset-done':
       console.info('[xiaonux] machine reset: your changes were deleted');
-      location.reload();
+      resetDone();
+      break;
+    case 'reset-failed':
+      resetFailed(m.reason);
       break;
     case 'log':
       console.info(`[xiaonux] ${m.message}`);
@@ -620,12 +683,21 @@ const resetDlg = $<HTMLDialogElement>('reset-dlg');
 resetBtn.addEventListener('click', () => { resetDlg.returnValue = ''; resetDlg.showModal(); });
 resetDlg.addEventListener('close', () => {
   if (resetDlg.returnValue !== 'reset') { term.focus(); return; }
-  store.set(LESSONS_DONE_KEY, '{}'); // the files the checks refer to are gone
   resetBtn.disabled = true;
   setStatus('status.resetting');
   if (!worker) {
-    worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (e: MessageEvent<FromWorker>) => { if (e.data.type === 'reset-done') location.reload(); };
+    const w = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
+    worker = w;
+    w.onmessage = (e: MessageEvent<FromWorker>) => {
+      const m = e.data;
+      if (m.type === 'reset-done') resetDone();
+      else if (m.type === 'reset-failed') {
+        w.terminate();
+        if (worker === w) worker = null;
+        resetFailed(m.reason);
+      } else if (m.type === 'error') workerFailed(w, m.message);
+    };
+    w.onerror = (e) => workerFailed(w, e.message);
     send({ type: 'start', bootUrl: new URL(BOOT_URL, location.href).href, ramMb: RAM_MB, cmdline: CMDLINE, resetOnly: true });
   } else {
     send({ type: 'reset' });

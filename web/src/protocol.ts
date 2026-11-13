@@ -35,6 +35,8 @@ export type FromWorker =
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
+  | { type: 'reset-failed'; reason: string }
+  | { type: 'disk-mode'; persistent: boolean; reason: 'opfs' | 'other-tab' | 'unavailable' }
   | { type: 'transfer'; dir: 'up' | 'down'; done: number; total: number }
   | { type: 'upload-done'; name: string; path: string }
   | { type: 'download-done'; path: string; bytes: Uint8Array }

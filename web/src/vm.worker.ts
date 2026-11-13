@@ -505,7 +505,14 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     mod.disk = disk;
     disk.onWrite = scheduleSave;
     disk.record = record;
+    post({ type: 'disk-mode', persistent: disk.persistence === 'opfs', reason: disk.persistence });
     if (resetOnly) {
+      // Without the storage files there is nothing here to delete: say so
+      // rather than report a reset that cleared an in-memory disk.
+      if (disk.persistence !== 'opfs') {
+        post({ type: 'reset-failed', reason: disk.persistence });
+        return;
+      }
       disk.reset();
       post({ type: 'reset-done' });
       return;
@@ -584,9 +591,27 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         (e) => post({ type: 'transfer-error', message: `download of ${m.path} failed: ${e.message}` }));
       break;
     case 'reset':
-      // Stop the guest first so it can't write after the overlay is gone.
+      if (!disk) {
+        post({ type: 'reset-failed', reason: 'starting' });
+        break;
+      }
+      // An in-memory disk has nothing saved to delete; a reset there would
+      // only look like it worked.
+      if (disk.persistence !== 'opfs') {
+        post({ type: 'reset-failed', reason: disk.persistence });
+        break;
+      }
+      // Stop the guest first so it can't write after the overlay is gone, and
+      // drop chunk downloads still in flight (a write waiting on one would
+      // otherwise land in the emptied overlay).
       ready = false;
-      disk?.reset();
+      disk.freeze();
+      // No save may run once the overlay is gone.
+      if (saveTimer !== null) clearTimeout(saveTimer);
+      saveTimer = null;
+      unsavedSince = 0;
+      forcedSaveQueued = false;
+      disk.reset();
       post({ type: 'reset-done' });
       break;
     case 'resize':
