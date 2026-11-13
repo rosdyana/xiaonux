@@ -13,6 +13,9 @@ network is off by default; running this helper turns it on for that tab.
 Run it and keep its window open. It prints a pairing link and opens it in
 your browser (`--no-open` to skip). The page remembers the pairing.
 
+To stop it, press Ctrl+C in its window or close the window. It installs no
+service and never starts by itself; run it again next time.
+
 ## Safety
 - Listens on `127.0.0.1` only; accepts only the xiaonux page's origin
   (`--origin` to add one) and requests carrying the pairing token.

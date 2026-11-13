@@ -12,7 +12,7 @@
     { "text": "Count lines, words and bytes.", "cmd": "wc note.txt" },
     { "text": "Pipes: send one command's output into another. Which files in /etc mention <i>root</i>?", "cmd": "grep -l root /etc/* 2>/dev/null | head" },
     { "text": "Sort and count: the most common shells in /etc/passwd.", "cmd": "cut -d: -f7 /etc/passwd | sort | uniq -c | sort -rn" },
-    { "text": "Read the manual for any command. Press <kbd>q</kbd> to leave.", "cmd": "man ls" },
+    { "text": "Ask any command for help with <code>--help</code>. It's long, so <code>head</code> shows just the start.", "cmd": "ls --help | head -20" },
     { "text": "Go back home and remove the practice folder.", "cmd": "cd ~ && rm -r practice" }
   ]
 }

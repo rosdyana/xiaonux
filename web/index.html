@@ -139,13 +139,22 @@
               <h3>Get xiaonux-net</h3>
               <p>It shares your computer's internet with this tab only: web ports 80 and 443, never your local network. Run it, and it opens this page already paired.</p>
               <ul id="helper-files" class="files"></ul>
+              <div class="startstop">
+                <h4>Start and stop</h4>
+                <dl>
+                  <dt>Windows</dt><dd>Start: open <b>xiaonux-net</b> from the Start menu. A window opens; keep it open while you use the machine.</dd>
+                  <dt>macOS</dt><dd>Start: unzip, then double-click <b>xiaonux-net</b>. It runs in a Terminal window; keep it open.</dd>
+                  <dt>Linux</dt><dd>Start: <code>tar xzf xiaonux-net-*.tar.gz &amp;&amp; ./xiaonux-net</code> in a terminal, and leave it running.</dd>
+                  <dt>Stop</dt><dd>Press <kbd>Ctrl</kbd>+<kbd>C</kbd> in its window, or close the window. It doesn't install a service and doesn't start on its own again; run it the next time you want internet here.</dd>
+                </dl>
+              </div>
               <details id="unsigned" class="unsigned" open>
                 <summary>The helper isn't code-signed yet</summary>
                 <p>Your system will warn the first time. Check the SHA-256 above against the file, then:</p>
                 <dl>
                   <dt>Windows</dt><dd>SmartScreen: choose <b>More info</b>, then <b>Run anyway</b>.</dd>
                   <dt>macOS</dt><dd>Right-click the app, choose <b>Open</b>, then <b>Open</b> again. Or run <code>xattr -d com.apple.quarantine xiaonux-net</code>.</dd>
-                  <dt>Linux</dt><dd><code>tar xzf xiaonux-net-*.tar.gz &amp;&amp; ./xiaonux-net</code></dd>
+                  <dt>Linux</dt><dd>No warning. If it won't run, make it executable: <code>chmod +x xiaonux-net</code>.</dd>
                 </dl>
               </details>
             </div>

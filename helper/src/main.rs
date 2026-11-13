@@ -118,7 +118,8 @@ async fn main() {
         }
     };
     println!("xiaonux-net {} is sharing this computer's internet with xiaonux.", env!("CARGO_PKG_VERSION"));
-    println!("Listening on {addr} (this computer only). Keep this window open while you use it.\n");
+    println!("Listening on {addr} (this computer only). Keep this window open while you use it.");
+    println!("To stop: press Ctrl+C or close this window.\n");
     for o in &cfg.origins {
         println!("Pair:  {o}/?net=helper&port={}&token={}", cfg.port, cfg.token);
     }
