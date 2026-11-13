@@ -1,0 +1,14 @@
+{
+  "id": "processes",
+  "title": "Processes and signals",
+  "intro": "A process is a running program. You can list them, run them in the background and send them signals.",
+  "steps": [
+    { "text": "Show every process with its owner, CPU and memory.", "cmd": "ps aux | head -15" },
+    { "text": "Start a long command in the background with <code>&amp;</code>.", "cmd": "sleep 300 &" },
+    { "text": "List your background jobs.", "cmd": "jobs -l" },
+    { "text": "Find it by name.", "cmd": "pgrep -a sleep" },
+    { "text": "Send it the TERM signal and check it's gone.", "cmd": "kill %1; sleep 1; jobs -l" },
+    { "text": "Watch processes live. Press <kbd>q</kbd> to quit.", "cmd": "top" },
+    { "text": "How long has this machine been up, and how busy is it?", "cmd": "uptime" }
+  ]
+}

@@ -59,4 +59,9 @@ export default defineConfig({
   server: { port: 5180, headers: COI },
   preview: { port: 5180, headers: COI },
   worker: { format: 'es' },
+  build: {
+    rollupOptions: {
+      input: { main: resolve(__dirname, 'index.html'), licenses: resolve(__dirname, 'licenses.html') },
+    },
+  },
 });

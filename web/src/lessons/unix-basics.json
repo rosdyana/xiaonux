@@ -1,0 +1,18 @@
+{
+  "id": "unix-basics",
+  "title": "Unix basics: files and folders",
+  "intro": "Press Type it to put each command in the terminal, then press Enter to run it. Each step gets checked when it has run.",
+  "steps": [
+    { "text": "Where am I? <code>pwd</code> prints the current folder.", "cmd": "pwd" },
+    { "text": "List everything here, including hidden files, with details.", "cmd": "ls -la" },
+    { "text": "Make a folder and move into it.", "cmd": "mkdir -p practice && cd practice" },
+    { "text": "Write a line into a new file with <code>&gt;</code>.", "cmd": "echo 'hello from xiaonux' > note.txt" },
+    { "text": "Add a second line with <code>&gt;&gt;</code> (append), then show the file.", "cmd": "echo 'second line' >> note.txt && cat note.txt" },
+    { "text": "Copy, rename and look again.", "cmd": "cp note.txt copy.txt && mv copy.txt renamed.txt && ls -l" },
+    { "text": "Count lines, words and bytes.", "cmd": "wc note.txt" },
+    { "text": "Pipes: send one command's output into another. Which files in /etc mention <i>root</i>?", "cmd": "grep -l root /etc/* 2>/dev/null | head" },
+    { "text": "Sort and count: the most common shells in /etc/passwd.", "cmd": "cut -d: -f7 /etc/passwd | sort | uniq -c | sort -rn" },
+    { "text": "Read the manual for any command. Press <kbd>q</kbd> to leave.", "cmd": "man ls" },
+    { "text": "Go back home and remove the practice folder.", "cmd": "cd ~ && rm -r practice" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "python",
+  "title": "Python and packages",
+  "intro": "Python 3 and pip are installed. Popular packages install from a copy served by this page, so they work with the internet off.",
+  "steps": [
+    { "text": "Which Python is this?", "cmd": "python3 --version" },
+    { "text": "Run a one-line program.", "cmd": "python3 -c 'print(sum(range(1, 101)))'" },
+    { "text": "Write a small script into a file.", "cmd": "printf 'import platform\\nprint(\"Hello from\", platform.machine())\\n' > hello.py" },
+    { "text": "Run it. <code>riscv64</code> is the processor this machine emulates.", "cmd": "python3 hello.py" },
+    { "text": "Install a package. PyYAML is small and installs in seconds.", "cmd": "pip install pyyaml" },
+    { "text": "Use it.", "cmd": "python3 -c 'import yaml; print(yaml.safe_dump({\"tools\": [\"python\", \"pip\"]}))'" },
+    { "text": "Bigger packages work too. numpy takes a few minutes to install here.", "cmd": "pip install numpy" },
+    { "text": "Try it out.", "cmd": "python3 -c 'import numpy as np; print(np.arange(12).reshape(3, 4))'" },
+    { "text": "Start the interactive Python shell. Type <code>exit()</code> to leave.", "cmd": "python3" }
+  ]
+}

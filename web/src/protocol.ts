@@ -21,7 +21,9 @@ export type ToWorker =
   | { type: 'reset' }
   | { type: 'save'; reason: string }
   | { type: 'net'; net: NetConfig }
-  | { type: 'jit-export' };
+  | { type: 'jit-export' }
+  | { type: 'upload'; name: string; data: Uint8Array }
+  | { type: 'download'; path: string };
 
 export type FromWorker =
   | { type: 'console'; data: Uint8Array }
@@ -33,6 +35,10 @@ export type FromWorker =
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
+  | { type: 'transfer'; dir: 'up' | 'down'; done: number; total: number }
+  | { type: 'upload-done'; name: string; path: string }
+  | { type: 'download-done'; path: string; bytes: Uint8Array }
+  | { type: 'transfer-error'; message: string }
   | { type: 'jit-export'; bytes: Uint8Array; build: number }
   | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected' | 'rotated'; mode: string; detail?: string }
   | { type: 'net-blocked'; host: string; reason: string }

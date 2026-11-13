@@ -1,0 +1,16 @@
+{
+  "id": "permissions",
+  "title": "Permissions and users",
+  "intro": "Every file has an owner, a group and read/write/execute bits for each. You're root here, so you can create users and see the rules from both sides.",
+  "steps": [
+    { "text": "Who am I, and which groups am I in?", "cmd": "id" },
+    { "text": "Make a script and look at its permission bits.", "cmd": "printf '#!/bin/sh\\necho it runs\\n' > hello.sh && ls -l hello.sh" },
+    { "text": "Try to run it. It fails: there's no <code>x</code> bit.", "cmd": "./hello.sh" },
+    { "text": "Add execute permission for the owner, then run it.", "cmd": "chmod u+x hello.sh && ./hello.sh" },
+    { "text": "Numeric modes: 640 is rw- for owner, r-- for group, nothing for others.", "cmd": "chmod 640 hello.sh && ls -l hello.sh" },
+    { "text": "Create a normal user.", "cmd": "useradd -m student && id student" },
+    { "text": "Become that user. Notice the prompt changes from <code>#</code> to <code>$</code>.", "cmd": "su - student" },
+    { "text": "As student, you can't read root's home.", "cmd": "ls /root" },
+    { "text": "Go back to root.", "cmd": "exit" }
+  ]
+}

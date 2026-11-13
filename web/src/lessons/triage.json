@@ -1,0 +1,17 @@
+{
+  "id": "triage",
+  "title": "Security lab: triage a file",
+  "intro": "This walk-through makes a harmless script that looks like a dropper, then examines it the way you'd examine a real sample. To work on your own file, use Upload (or drop it on the terminal); it lands in /root/uploads.",
+  "steps": [
+    { "text": "Create the sample. It only prints text, but hides it in base64 the way droppers do.", "cmd": "mkdir -p ~/lab && cd ~/lab && printf '#!/bin/sh\\n# installer\\nU=http://example.invalid/payload\\necho ZWNobyAidGhpcyBpcyBvbmx5IGEgdGVzdCI= | base64 -d | sh\\n' > sample.sh" },
+    { "text": "Never trust the name. Ask what the file really is.", "cmd": "file sample.sh" },
+    { "text": "Record its fingerprint so you can look it up and refer to it later.", "cmd": "sha256sum sample.sh" },
+    { "text": "Pull out readable text: URLs, commands, paths.", "cmd": "strings -n 6 sample.sh" },
+    { "text": "Look at the raw bytes.", "cmd": "xxd sample.sh | head" },
+    { "text": "Decode the hidden part without running it.", "cmd": "grep -o '[A-Za-z0-9+/=]\\{20,\\}' sample.sh | base64 -d; echo" },
+    { "text": "Write a YARA rule for this pattern: download URL plus a base64-to-shell pipe.", "cmd": "printf 'rule b64_pipe_to_shell {\\n  strings:\\n    $url = \"http://\"\\n    $pipe = /base64 -d \\\\| *sh/\\n  condition:\\n    $url and $pipe\\n}\\n' > dropper.yar && cat dropper.yar" },
+    { "text": "Scan the folder with it.", "cmd": "yara -s dropper.yar ." },
+    { "text": "Now run it, watching every system call it makes. It's safe: it only echoes.", "cmd": "strace -f -e trace=execve,openat,connect sh sample.sh 2>&1 | tail -15" },
+    { "text": "Uploaded a binary? Check its type, then its headers. Windows files work with <code>pefile</code>; ELF with <code>readelf</code>.", "cmd": "ls -l /root/uploads 2>/dev/null; file /root/uploads/* 2>/dev/null" }
+  ]
+}

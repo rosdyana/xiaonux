@@ -121,6 +121,7 @@ function tick() {
   do {
     drainInput();
     pumpRx();
+    pumpAgent();
     delay = vm._vm_run_slice(SLICE_CYCLES, CHUNK_CYCLES);
     if (delay === 0) cycles += SLICE_CYCLES;
   } while (delay === 0 && performance.now() - start < SLICE_BUDGET_MS);
@@ -196,9 +197,44 @@ async function preloadJit(base: string, jit: { file: string; build: number; raw?
 }
 
 // ----- guest agent (/dev/hvc1) -----
+// Replies are lines. "ok <cmd> ..." / "err <cmd> ..." resolve the oldest
+// waiter for <cmd>; "file"/"data" lines belong to a running download.
 let agentBuf = '';
-const agentWaiters: { cmd: string; resolve: (ok: boolean) => void }[] = [];
+const agentWaiters: { cmd: string; resolve: (ok: boolean, line: string) => void }[] = [];
 const agentDecoder = new TextDecoder();
+const agentEncoder = new TextEncoder();
+
+// Bytes for the agent wait here: the C side takes at most 4 KB at a time.
+const agentOut: Uint8Array[] = [];
+let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+let agentOutOff = 0;
+
+function pumpAgent() {
+  if (!vm) return;
+  while (agentOut.length) {
+    const head = agentOut[0];
+    const piece = head.subarray(agentOutOff, agentOutOff + 4096);
+    const p = vm._malloc(piece.length);
+    vm.HEAPU8.set(piece, p);
+    const n = vm._agent_send(p, piece.length);
+    vm._free(p);
+    if (n <= 0) return;
+    agentOutOff += n;
+    if (agentOutOff >= head.length) {
+      agentOut.shift();
+      agentOutOff = 0;
+    }
+  }
+}
+
+function agentWrite(line: string) {
+  agentOut.push(agentEncoder.encode(line + '\n'));
+  pumpAgent();
+  wake();
+}
+
+interface Download { size: number; sha: string; parts: Uint8Array[]; got: number; resolve: (b: Uint8Array) => void; reject: (e: Error) => void }
+let download: Download | null = null;
 
 function onAgent(bytes: Uint8Array) {
   agentBuf += agentDecoder.decode(bytes, { stream: true });
@@ -207,25 +243,78 @@ function onAgent(bytes: Uint8Array) {
     const line = agentBuf.slice(0, i).trim();
     agentBuf = agentBuf.slice(i + 1);
     const [status, cmd] = line.split(' ');
+    if (status === 'file' && download) {
+      const [, size, sha] = line.split(' ');
+      download.size = Number(size);
+      download.sha = sha;
+      continue;
+    }
+    if (status === 'data' && download) {
+      const bin = atob(line.slice(5));
+      const b = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) b[k] = bin.charCodeAt(k);
+      download.parts.push(b);
+      download.got += b.length;
+      post({ type: 'transfer', dir: 'down', done: download.got, total: download.size });
+      continue;
+    }
     const w = agentWaiters.findIndex((x) => x.cmd === cmd);
-    if (w >= 0) agentWaiters.splice(w, 1)[0].resolve(status === 'ok');
+    if (w >= 0) agentWaiters.splice(w, 1)[0].resolve(status === 'ok', line);
     if (status === 'err') post({ type: 'log', message: `agent: ${line}` });
   }
 }
 
-function agentCommand(line: string, timeoutMs = 5000): Promise<boolean> {
+function agentRequest(line: string, timeoutMs = 5000): Promise<{ ok: boolean; line: string }> {
   const cmd = line.split(' ')[0];
-  const p = new Promise<boolean>((resolve) => {
-    agentWaiters.push({ cmd, resolve });
-    setTimeout(() => resolve(false), timeoutMs);
+  const p = new Promise<{ ok: boolean; line: string }>((resolve) => {
+    agentWaiters.push({ cmd, resolve: (ok, l) => resolve({ ok, line: l }) });
+    setTimeout(() => resolve({ ok: false, line: 'timeout' }), timeoutMs);
   });
-  const bytes = new TextEncoder().encode(line + '\n');
-  const ptr = vm!._malloc(bytes.length);
-  vm!.HEAPU8.set(bytes, ptr);
-  vm!._agent_send(ptr, bytes.length);
-  vm!._free(ptr);
-  wake();
+  agentWrite(line);
   return p;
+}
+
+const agentCommand = (line: string, timeoutMs = 5000) => agentRequest(line, timeoutMs).then((r) => r.ok);
+
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+
+/** Upload a file into /root/uploads/<name> through the agent (no network needed). */
+async function uploadFile(name: string, data: Uint8Array) {
+  const put = await agentRequest(`put ${data.length} ${name}`);
+  if (!put.ok) throw new Error(put.line);
+  const STEP = 36 * 1024;
+  for (let o = 0; o < data.length; o += STEP) {
+    let bin = '';
+    const piece = data.subarray(o, o + STEP);
+    for (let k = 0; k < piece.length; k += 0x8000) bin += String.fromCharCode(...piece.subarray(k, k + 0x8000));
+    agentWrite('chunk ' + btoa(bin));
+    // let the guest drain before queueing much more
+    while (agentOut.length > 8) await new Promise((r) => setTimeout(r, 5));
+    post({ type: 'transfer', dir: 'up', done: Math.min(o + STEP, data.length), total: data.length });
+  }
+  while (agentOut.length) await new Promise((r) => setTimeout(r, 5));
+  const sha = hex(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>));
+  const end = await agentRequest(`end ${sha}`, 120000);
+  if (!end.ok) throw new Error(end.line);
+  return end.line.split(' ').slice(2).join(' '); // path in the guest
+}
+
+/** Fetch a file under /root from the guest, verified by SHA-256. */
+async function downloadFile(path: string): Promise<Uint8Array> {
+  if (download) throw new Error('a download is already running');
+  const result = new Promise<Uint8Array>((resolve, reject) => {
+    download = { size: 0, sha: '', parts: [], got: 0, resolve, reject };
+  });
+  const r = await agentRequest(`get ${path}`, 600000);
+  const d = download!;
+  download = null;
+  if (!r.ok) throw new Error(r.line.replace(/^err get /, ''));
+  const out = new Uint8Array(d.got);
+  let o = 0;
+  for (const part of d.parts) { out.set(part, o); o += part.length; }
+  if (d.got !== d.size || hex(await crypto.subtle.digest('SHA-256', out)) !== d.sha) throw new Error('transfer corrupted');
+  d.resolve(out);
+  return result;
 }
 
 // After a restore: fresh entropy and the real clock before the user sees a
@@ -421,6 +510,16 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'save':
       saveNow(m.reason);
       break;
+    case 'upload':
+      uploadFile(m.name, m.data).then(
+        (path) => post({ type: 'upload-done', name: m.name, path }),
+        (e) => post({ type: 'transfer-error', message: `upload of ${m.name} failed: ${e.message}` }));
+      break;
+    case 'download':
+      downloadFile(m.path).then(
+        (bytes) => post({ type: 'download-done', path: m.path, bytes }, [bytes.buffer]),
+        (e) => post({ type: 'transfer-error', message: `download of ${m.path} failed: ${e.message}` }));
+      break;
     case 'reset':
       // Stop the guest first so it can't write after the overlay is gone.
       ready = false;
@@ -431,6 +530,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (vm) {
         vm.consoleSize = [m.cols, m.rows];
         vm._console_resize();
+        // The shell only sees the size the agent sets on /dev/hvc0 (the
+        // console resize alone doesn't reach the tty), so tell it too.
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => agentCommand(`size ${m.cols} ${m.rows}`), 100);
         wake();
       }
       break;
