@@ -222,6 +222,7 @@ const strings = {
   'net.runHelper': 'Run xiaonux-net on this computer. It opens this page already connected.',
   'net.waitingHelper': 'Waiting for helper',
   'net.relayConnecting': 'Connecting to the relay…',
+  'net.relayReady': 'Relay on. Linux connects through it when it needs the network.',
   'net.relayUnavailable': 'The relay isn\'t available right now ({message}).',
   'net.relayEnded': 'The relay session ended; it reconnects on next use. For big downloads, use the helper.',
   'net.relayPaused': 'Relay paused',

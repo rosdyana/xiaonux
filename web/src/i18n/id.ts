@@ -212,6 +212,7 @@ const id: Locale = {
     'net.runHelper': 'Jalankan xiaonux-net di komputer ini. Program itu membuka halaman ini dalam keadaan sudah terhubung.',
     'net.waitingHelper': 'Menunggu helper',
     'net.relayConnecting': 'Menghubungkan ke relay…',
+    'net.relayReady': 'Relay aktif. Linux terhubung melaluinya saat membutuhkan jaringan.',
     'net.relayUnavailable': 'Relay sedang tidak tersedia ({message}).',
     'net.relayEnded': 'Sesi relay berakhir; akan tersambung lagi saat dipakai berikutnya. Untuk unduhan besar, gunakan helper.',
     'net.relayPaused': 'Relay dijeda',

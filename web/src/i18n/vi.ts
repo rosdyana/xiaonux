@@ -212,6 +212,7 @@ const vi: Locale = {
     'net.runHelper': 'Chạy xiaonux-net trên máy tính này. Nó sẽ mở trang này và kết nối sẵn.',
     'net.waitingHelper': 'Đang chờ chương trình trợ giúp',
     'net.relayConnecting': 'Đang kết nối tới relay…',
+    'net.relayReady': 'Relay đã bật. Linux kết nối qua nó khi cần mạng.',
     'net.relayUnavailable': 'Hiện không dùng được relay ({message}).',
     'net.relayEnded': 'Phiên relay đã kết thúc; nó sẽ tự kết nối lại khi bạn dùng tiếp. Với các bản tải lớn, hãy dùng chương trình trợ giúp.',
     'net.relayPaused': 'Relay tạm dừng',

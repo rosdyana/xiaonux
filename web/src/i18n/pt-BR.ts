@@ -212,6 +212,7 @@ const ptBR: Locale = {
     'net.runHelper': 'Rode o xiaonux-net neste computador. Ele abre esta página já conectada.',
     'net.waitingHelper': 'Aguardando o auxiliar',
     'net.relayConnecting': 'Conectando ao relay…',
+    'net.relayReady': 'Relay ativo. O Linux se conecta por ele quando precisar da rede.',
     'net.relayUnavailable': 'O relay não está disponível agora ({message}).',
     'net.relayEnded': 'A sessão do relay terminou; ela reconecta no próximo uso. Para downloads grandes, use o auxiliar.',
     'net.relayPaused': 'Relay pausado',

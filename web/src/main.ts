@@ -157,6 +157,10 @@ let relaySession: { session: string; expires: number; allowed?: string[]; ports?
 const netRadios = [...document.querySelectorAll<HTMLInputElement>('input[name=netmode]')];
 if (!RELAY_URL) $('relay-option').hidden = true;
 
+type TurnstileApi = { render: (el: HTMLElement, o: object) => string; remove: (id: string) => void };
+/** How long the visitor has to finish the challenge before we say so (instead of waiting forever). */
+const TURNSTILE_LIMIT_MS = 60_000;
+
 function turnstileToken(): Promise<string> {
   if (!TURNSTILE_SITEKEY) return Promise.resolve(''); // local dev relay (DEV_NO_TURNSTILE)
   return new Promise((resolve, reject) => {
@@ -164,11 +168,27 @@ function turnstileToken(): Promise<string> {
       const box = document.createElement('div');
       box.className = 'turnstile';
       document.body.appendChild(box);
-      const ts = (window as unknown as { turnstile: { render: (el: HTMLElement, o: object) => void } }).turnstile;
-      ts.render(box, {
+      const ts = (window as unknown as { turnstile: TurnstileApi }).turnstile;
+      let id = '';
+      let settled = false;
+      // Remove through the API first: removing only the element leaves the
+      // widget alive ("Cannot find Widget …" when Turnstile refreshes it).
+      const done = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(limit);
+        try { if (id) ts.remove(id); } catch { /* already gone */ }
+        box.remove();
+        fn();
+      };
+      const fail = (why: string) => done(() => reject(new Error(why)));
+      const limit = setTimeout(() => fail('the relay check did not finish'), TURNSTILE_LIMIT_MS);
+      id = ts.render(box, {
         sitekey: TURNSTILE_SITEKEY,
-        callback: (t: string) => { box.remove(); resolve(t); },
-        'error-callback': () => { box.remove(); reject(new Error('challenge failed')); },
+        callback: (t: string) => done(() => resolve(t)),
+        'error-callback': () => fail('challenge failed'),
+        'timeout-callback': () => fail('the relay check timed out'),
+        'expired-callback': () => fail('the relay check expired'),
       });
     };
     if ((window as unknown as { turnstile?: unknown }).turnstile) return render();
@@ -251,6 +271,8 @@ for (const r of netRadios) r.addEventListener('change', async () => {
   if (netPrefs.mode === 'relay') {
     showNet(() => t('net.relayConnecting'), 'waiting');
     if (!(await ensureRelaySession())) return;
+    // The relay socket opens on Linux's first connection; until then, say it's ready.
+    if (netPrefs.mode === 'relay') showNet(() => t('net.relayReady'), 'on');
   }
   send({ type: 'net', net: netConfig() });
 });

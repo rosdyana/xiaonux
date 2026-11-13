@@ -644,7 +644,7 @@ select:hover, input[type="text"]:hover { border-color: var(--line-strong); }
 .keys button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 @media (pointer: coarse) { .keys { display: flex; } }
 
-.turnstile { position: fixed; right: 16px; bottom: 16px; z-index: 10; }
+.turnstile { position: fixed; right: 16px; bottom: 16px; z-index: 30; } /* above .consent (20) */
 
 /* ---------------------------------------------------------------- narrow */
 @media (max-width: 960px) {

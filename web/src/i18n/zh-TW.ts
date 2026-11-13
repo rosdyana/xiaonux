@@ -212,6 +212,7 @@ const zhTW: Locale = {
     'net.runHelper': '在這台電腦上執行 xiaonux-net。它會開啟這個頁面，並且已經連線好。',
     'net.waitingHelper': '正在等待輔助程式',
     'net.relayConnecting': '正在連線到中繼伺服器…',
+    'net.relayReady': '中繼伺服器已開啟。Linux 需要網路時會透過它連線。',
     'net.relayUnavailable': '中繼伺服器目前無法使用（{message}）。',
     'net.relayEnded': '中繼工作階段已結束，下次使用時會自動重新連線。大型下載請改用輔助程式。',
     'net.relayPaused': '中繼已暫停',
