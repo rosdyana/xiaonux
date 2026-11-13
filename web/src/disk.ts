@@ -4,6 +4,13 @@
 
 const CLUSTER = 4096;
 const CACHE_NAME = 'xiaonux-chunks-v1';
+/** Pauses before the 2nd and 3rd attempt of a chunk download. */
+const RETRY_DELAYS_MS = [250, 1000];
+
+/** A static host's "not found" page served with 200 must never be cached as data. */
+export function looksLikeHtml(r: Response): boolean {
+  return (r.headers.get('content-type') ?? '').toLowerCase().includes('text/html');
+}
 
 export interface DiskManifest {
   format: string;
@@ -196,6 +203,10 @@ export class ChunkDisk {
   };
   private overlay!: Overlay;
   private cache: Cache | null = null;
+  /** URLs whose cached copy C rejected: the next download bypasses every cache */
+  private refetch = new Set<string>();
+  /** URLs already re-requested at once after a rejection (one retry each) */
+  private retried = new Set<string>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   /** overlay changed since the last user snapshot */
   changedSinceSave = false;
@@ -275,7 +286,7 @@ export class ChunkDisk {
     const hash = this.manifest.hashes[hashIndex];
     const url = `${this.base}chunks/${hash}.br`;
     if (this.record) (this.stats.fetchOrder ??= []).push(hashIndex);
-    const fromBundle = this.bundled.get(hash);
+    const fromBundle = this.refetch.has(url) ? undefined : this.bundled.get(hash);
     (fromBundle ? fromBundle.then((b) => b ?? this.getChunk(url)) : this.getChunk(url))
       .then((bytes) => this.deliver(block, bytes))
       .catch((e) => {
@@ -306,26 +317,68 @@ export class ChunkDisk {
     if (kind === 2) this.onEvent(`chunk ${block}: hash mismatch`);
     if (kind === 3) this.onEvent(`chunk ${block}: decode error ${value}`);
     if (kind !== 1) this.stats.errors++;
+    // C rejected the bytes JS handed over (kind 3 with -1 only means the fetch failed)
+    if (kind === 2 || (kind === 3 && value !== -1)) this.recover(block);
   };
+
+  /**
+   * A bad copy must not be served again: drop it from Cache Storage and make
+   * the next download skip the HTTP cache too. C has already cleared this
+   * block's loading flag but not yet failed the waiting guest request, so
+   * asking for the block again now keeps that request waiting for a good
+   * copy. Once per URL: a chunk that is bad twice becomes an I/O error.
+   */
+  private recover(block: number) {
+    const k = this.manifest.map[block];
+    if (!k) return;
+    const url = `${this.base}chunks/${this.manifest.hashes[k - 1]}.br`;
+    this.cache?.delete(url).catch(() => {});
+    this.refetch.add(url);
+    if (this.retried.has(url)) return;
+    this.retried.add(url);
+    this.mod._blk_prefetch(block);
+  }
 
   // ----- helpers -----
 
   private async getChunk(url: string): Promise<Uint8Array> {
-    const hit = this.cache ? await this.cache.match(url) : undefined;
+    const reload = this.refetch.has(url);
+    const hit = this.cache && !reload ? await this.cache.match(url) : undefined;
     if (hit) {
       const b = new Uint8Array(await hit.arrayBuffer());
       this.stats.chunksFromCache++;
       this.stats.bytesCache += b.length;
       return b;
     }
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const b = new Uint8Array(await r.arrayBuffer());
+    const b = await this.download(url, reload);
+    this.refetch.delete(url);
     this.stats.chunksFetched++;
     this.stats.bytesNetwork += b.length;
     // Chunks are immutable (named by content hash): cache forever.
     this.cache?.put(url, new Response(b, { headers: { 'Content-Type': 'application/octet-stream' } })).catch(() => {});
     return b;
+  }
+
+  /** Up to 3 attempts: network errors and 5xx are retried, a 4xx or an HTML page is not. */
+  private async download(url: string, reload: boolean): Promise<Uint8Array<ArrayBuffer>> {
+    for (let attempt = 0; ; attempt++) {
+      let retryable = true;
+      try {
+        const r = await fetch(url, reload ? { cache: 'reload' } : undefined);
+        if (!r.ok) {
+          retryable = r.status >= 500;
+          throw new Error(`HTTP ${r.status}`);
+        }
+        if (looksLikeHtml(r)) {
+          retryable = false;
+          throw new Error('got an HTML page instead of a chunk');
+        }
+        return new Uint8Array(await r.arrayBuffer());
+      } catch (e) {
+        if (!retryable || attempt >= RETRY_DELAYS_MS.length) throw e;
+        await new Promise((done) => setTimeout(done, RETRY_DELAYS_MS[attempt]));
+      }
+    }
   }
 
   private deliver(block: number, bytes: Uint8Array) {
@@ -353,6 +406,7 @@ export class ChunkDisk {
     try {
       const r = await fetch(this.base + file, { priority: 'low' } as RequestInit);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (looksLikeHtml(r)) throw new Error('got an HTML page instead of the bundle');
       const all = new Uint8Array(await r.arrayBuffer());
       bytes = all.length;
       this.stats.bytesNetwork += bytes;

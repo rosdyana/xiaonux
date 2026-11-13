@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 // Runs TinyEMU (WASM) and its main loop. The page only draws the terminal.
 import type { FromWorker, NetConfig, ToWorker } from './protocol';
-import { ChunkDisk, type DiskModule } from './disk';
+import { ChunkDisk, looksLikeHtml, type DiskModule } from './disk';
 import { NetStack } from './net/stack';
 import { noExit, type Exit } from './net/exit';
 import { WispExit } from './net/wisp';
@@ -426,6 +426,7 @@ async function fetchCached(url: string): Promise<Uint8Array> {
   }
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  if (looksLikeHtml(r)) throw new Error(`${url}: got an HTML page instead of the file`);
   const b = new Uint8Array(await r.arrayBuffer());
   post({ type: 'fetch', url, bytes: b.length });
   cache?.put(url, new Response(b)).catch(() => {});
