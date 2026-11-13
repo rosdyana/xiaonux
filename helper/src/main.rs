@@ -20,6 +20,7 @@ use futures_util::{SinkExt, StreamExt};
 use sha1::{Digest, Sha1};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::tungstenite::protocol::{Message, Role};
 use tokio_tungstenite::WebSocketStream;
@@ -30,6 +31,8 @@ const CONTINUE: u8 = 3;
 const CLOSE: u8 = 4;
 /// DATA packets a client may send per stream before waiting for CONTINUE.
 const BUFFER: u32 = 128;
+/// Streams one WISP session may have open at once.
+const MAX_STREAMS: usize = 64;
 
 const CLOSE_VOLUNTARY: u8 = 0x02;
 const CLOSE_NETWORK_ERROR: u8 = 0x03;
@@ -38,6 +41,7 @@ const CLOSE_UNREACHABLE: u8 = 0x42;
 const CLOSE_TIMEOUT: u8 = 0x43;
 const CLOSE_REFUSED: u8 = 0x44;
 const CLOSE_BLOCKED: u8 = 0x48;
+const CLOSE_THROTTLED: u8 = 0x49;
 
 #[derive(Clone)]
 struct Config {
@@ -279,9 +283,27 @@ fn is_local(ip: &IpAddr) -> bool {
             a.is_loopback() || a.is_unspecified() || a.is_multicast()
                 || (s[0] & 0xfe00) == 0xfc00 // unique local
                 || (s[0] & 0xffc0) == 0xfe80 // link local
+                || (s[0] & 0xffc0) == 0xfec0 // site local (deprecated)
                 || a.to_ipv4_mapped().is_some_and(|v4| is_local(&IpAddr::V4(v4)))
+                || embedded_v4(a).is_some_and(|v4| is_local(&IpAddr::V4(v4)))
         }
     }
+}
+
+/// IPv4 address carried inside an IPv6 one (NAT64, 6to4, IPv4-compatible).
+fn embedded_v4(a: &std::net::Ipv6Addr) -> Option<std::net::Ipv4Addr> {
+    let s = a.segments();
+    let o = a.octets();
+    if s[0] == 0x64 && s[1] == 0xff9b && (s[2..6] == [0, 0, 0, 0] || s[2] == 1) {
+        return Some(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15])); // 64:ff9b::/96, 64:ff9b:1::/48
+    }
+    if s[0] == 0x2002 {
+        return Some(std::net::Ipv4Addr::new(o[2], o[3], o[4], o[5])); // 6to4
+    }
+    if s[..6] == [0, 0, 0, 0, 0, 0] && !a.is_loopback() && !a.is_unspecified() {
+        return Some(std::net::Ipv4Addr::new(o[12], o[13], o[14], o[15])); // ::a.b.c.d
+    }
+    None
 }
 
 /// Resolve and check a destination. Returns addresses we may connect to.
@@ -344,12 +366,13 @@ fn packet(kind: u8, id: u32, payload: &[u8]) -> Message {
 }
 
 struct StreamState {
-    to_tcp: mpsc::UnboundedSender<Vec<u8>>,
+    to_tcp: mpsc::Sender<Vec<u8>>,
     in_flight: Arc<AtomicU32>,
 }
 
 async fn wisp_session(ws: WebSocketStream<TcpStream>, cfg: Arc<Config>) {
     let (mut sink, mut source) = ws.split();
+    // Unbounded for now: bounding remote -> browser data needs backpressure on remote reads.
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
     // writer: everything to the browser goes through one channel
     let writer = tokio::spawn(async move {
@@ -373,18 +396,39 @@ async fn wisp_session(ws: WebSocketStream<TcpStream>, cfg: Arc<Config>) {
             CONNECT if body.len() >= 3 && body[0] == 1 => {
                 let port = u16::from_le_bytes([body[1], body[2]]);
                 let host = String::from_utf8_lossy(&body[3..]).into_owned();
-                let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
-                let in_flight = Arc::new(AtomicU32::new(0));
-                streams.lock().await.insert(id, StreamState { to_tcp: tx, in_flight: in_flight.clone() });
-                tokio::spawn(run_stream(id, host, port, rx, in_flight, out_tx.clone(), streams.clone(), cfg.clone()));
+                // check and insert under one lock so a live stream is never replaced
+                let mut g = streams.lock().await;
+                if g.contains_key(&id) {
+                    drop(g);
+                    let _ = out_tx.send(packet(CLOSE, id, &[CLOSE_INVALID]));
+                } else if g.len() >= MAX_STREAMS {
+                    drop(g);
+                    let _ = out_tx.send(packet(CLOSE, id, &[CLOSE_THROTTLED]));
+                } else {
+                    let (tx, rx) = mpsc::channel::<Vec<u8>>(BUFFER as usize);
+                    let in_flight = Arc::new(AtomicU32::new(0));
+                    g.insert(id, StreamState { to_tcp: tx, in_flight: in_flight.clone() });
+                    drop(g);
+                    tokio::spawn(run_stream(id, host, port, rx, in_flight, out_tx.clone(), streams.clone(), cfg.clone()));
+                }
             }
             CONNECT => {
                 let _ = out_tx.send(packet(CLOSE, id, &[CLOSE_INVALID]));
             }
             DATA => {
-                if let Some(s) = streams.lock().await.get(&id) {
-                    s.in_flight.fetch_add(1, Ordering::Relaxed);
-                    let _ = s.to_tcp.send(body.to_vec());
+                let mut g = streams.lock().await;
+                let overflow = match g.get(&id) {
+                    Some(s) => {
+                        s.in_flight.fetch_add(1, Ordering::Relaxed);
+                        matches!(s.to_tcp.try_send(body.to_vec()), Err(TrySendError::Full(_)))
+                    }
+                    None => false,
+                };
+                if overflow {
+                    // the client sent past its WISP credit: drop the stream
+                    g.remove(&id);
+                    drop(g);
+                    let _ = out_tx.send(packet(CLOSE, id, &[CLOSE_THROTTLED]));
                 }
             }
             CLOSE => {
@@ -404,7 +448,7 @@ async fn run_stream(
     id: u32,
     host: String,
     port: u16,
-    mut from_ws: mpsc::UnboundedReceiver<Vec<u8>>,
+    mut from_ws: mpsc::Receiver<Vec<u8>>,
     in_flight: Arc<AtomicU32>,
     out: mpsc::UnboundedSender<Message>,
     streams: Arc<Mutex<HashMap<u32, StreamState>>>,
@@ -466,5 +510,70 @@ async fn run_stream(
     to_remote.abort();
     if cfg.verbose {
         eprintln!("{host}:{port} up {} B down {} B", up.load(Ordering::Relaxed), down.load(Ordering::Relaxed));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_local_table() {
+        let rows: &[(&str, bool)] = &[
+            // local: must be refused
+            ("127.0.0.1", true),
+            ("10.1.2.3", true),
+            ("172.16.0.1", true),
+            ("192.168.1.1", true),
+            ("169.254.1.1", true),
+            ("100.64.0.1", true),
+            ("198.18.0.1", true),
+            ("0.0.0.0", true),
+            ("224.0.0.1", true),
+            ("255.255.255.255", true),
+            ("240.0.0.1", true),
+            ("::1", true),
+            ("::", true),
+            ("fe80::1", true),
+            ("fd00::1", true),
+            ("ff02::1", true),
+            ("::ffff:192.168.1.1", true),
+            ("64:ff9b::c0a8:0101", true),   // NAT64 of 192.168.1.1
+            ("64:ff9b:1::c0a8:0101", true), // local-use NAT64 of 192.168.1.1
+            ("2002:c0a8:0101::1", true),    // 6to4 of 192.168.1.1
+            ("::c0a8:0101", true),          // IPv4-compatible 192.168.1.1
+            ("fec0::1", true),              // deprecated site-local
+            // public: must be allowed
+            ("1.1.1.1", false),
+            ("8.8.8.8", false),
+            ("151.101.0.223", false),
+            ("2606:4700:4700::1111", false),
+            ("2a04:4e42::223", false),
+            ("::ffff:1.1.1.1", false),
+            ("64:ff9b::0101:0101", false), // NAT64 of 1.1.1.1
+            ("2002:0101:0101::1", false),  // 6to4 of 1.1.1.1
+        ];
+        let mut wrong = vec![];
+        for (s, want) in rows {
+            let got = is_local(&s.parse::<IpAddr>().unwrap());
+            if got != *want {
+                wrong.push(format!("{s}: want {want}, got {got}"));
+            }
+        }
+        assert!(wrong.is_empty(), "misclassified:\n{}", wrong.join("\n"));
+    }
+
+    #[test]
+    fn embedded_v4_forms() {
+        use std::net::{Ipv4Addr, Ipv6Addr};
+        let v6 = |s: &str| s.parse::<Ipv6Addr>().unwrap();
+        let lan = Some(Ipv4Addr::new(192, 168, 1, 1));
+        assert_eq!(embedded_v4(&v6("64:ff9b::c0a8:0101")), lan);
+        assert_eq!(embedded_v4(&v6("64:ff9b:1::c0a8:0101")), lan);
+        assert_eq!(embedded_v4(&v6("2002:c0a8:0101::1")), lan);
+        assert_eq!(embedded_v4(&v6("::c0a8:0101")), lan);
+        assert_eq!(embedded_v4(&v6("::1")), None);
+        assert_eq!(embedded_v4(&v6("::")), None);
+        assert_eq!(embedded_v4(&v6("2606:4700:4700::1111")), None);
     }
 }
