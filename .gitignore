@@ -10,3 +10,4 @@ target/
 web/.env.local
 .wrangler
 promo/
+docs/
