@@ -13,6 +13,8 @@
           <Directory Id="INSTALLDIR" Name="xiaonux-net">
             <Component Id="MainExe" Guid="8d3e2c41-0f6a-4b7e-a1c9-3e5f7a2b6c18">
               <File Id="XiaonuxNetExe" Name="xiaonux-net.exe" Source="xiaonux-net.exe" KeyPath="yes" />
+              <File Id="LicenseTxt" Name="LICENSE.txt" Source="LICENSE.txt" />
+              <File Id="NoticesTxt" Name="THIRD-PARTY-NOTICES.txt" Source="THIRD-PARTY-NOTICES.txt" />
               <RemoveFolder Id="RemoveInstallDir" On="uninstall" />
             </Component>
           </Directory>

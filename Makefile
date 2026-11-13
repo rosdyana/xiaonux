@@ -11,7 +11,7 @@ wheels:         ## build riscv64 wheels (builder VM) and publish the index to di
 	$(ORB) -m $(VM) sudo image/build-wheels.sh
 	python3 image/wheel-index.py
 
-.PHONY: jit-bundle serve wheels emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
+.PHONY: licenses jit-bundle serve wheels emu wasm firmware kernel rootfs image stage stage-snapshot prefetch web dev boot-native boot-chrome clean vm-stop
 
 emu:            ## native temu + splitimg (debugging)
 	$(MAKE) -C emu
@@ -64,6 +64,9 @@ dev:            ## dev server with COOP/COEP on http://localhost:5180
 
 serve:          ## production build + preview on :5180 (no live reload; use for long tests)
 	cd web && pnpm build && pnpm exec vite preview --port 5180 --strictPort
+
+licenses:       ## dist/vm/licenses.json for the Licenses page (after rootfs, wheels, web)
+	python3 tools/licenses/gen.py
 
 jit-bundle:     ## warm common commands and ship their translations (needs `make serve`)
 	cd bench && node jit-export.mjs
