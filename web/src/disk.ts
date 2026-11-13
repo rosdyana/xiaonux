@@ -2,6 +2,8 @@
 // Phase 2 disk: content-addressed Brotli chunks (decoded in WASM) plus a
 // copy-on-write overlay of 4 KB clusters kept in OPFS.
 
+import { SlotAllocator } from './overlay-slots.ts';
+
 const CLUSTER = 4096;
 const CACHE_NAME = 'xiaonux-chunks-v1';
 /** Pauses before the 2nd and 3rd attempt of a chunk download. */
@@ -47,11 +49,14 @@ export interface DiskStats {
 //   index   u32 per 4 KB cluster: slot+1, 0 = absent (the live disk)
 //   data    4 KB slots
 //   snapN / sidxN (N = 0, 1)  a saved machine + the index as it was then
-//   state   u32[3]: valid, active save (0/1), slots in use at that save
-// Slots at or below the save point are never overwritten: a cluster
-// written after a save gets a new slot. Resuming a save rolls the index
-// back to it, so the disk always matches the saved RAM. Saves alternate
-// between two files and flip 'state' last, so a torn save keeps the old one.
+//   state   u32[3]: valid, active save (0/1), high-water mark of slots at that save
+// A slot the active save uses is never written: a cluster written after a
+// save gets another slot. Slots neither the live index nor the active save
+// uses are reused (SlotAllocator), so the data file stops growing once the
+// working set is stable; a reused slot's data is flushed before its index
+// entry is written. Resuming a save rolls the index back to it, so the disk
+// always matches the saved RAM. Saves alternate between two files and flip
+// 'state' last, so a torn save keeps the old one.
 interface Overlay {
   backend: 'opfs' | 'memory';
   has(cluster: number): boolean;
@@ -99,18 +104,23 @@ async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
 
   const index = new Uint32Array(nClusters);
   idxH.read(new Uint8Array(index.buffer), { at: 0 });
-  let slots = Math.floor(datH.getSize() / CLUSTER);
+  const fileSlots = Math.floor(datH.getSize() / CLUSTER);
   // An index entry past the data file is from a torn write: drop it.
-  for (let i = 0; i < nClusters; i++) if (index[i] > slots) index[i] = 0;
-  const state = new Uint32Array(3); // valid, active, savedSlots
+  for (let i = 0; i < nClusters; i++) if (index[i] > fileSlots) index[i] = 0;
+  const state = new Uint32Array(3); // valid, active, high-water mark of slots
   stH.read(new Uint8Array(state.buffer), { at: 0 });
-  let savedSlots = state[0] ? state[2] : 0;
+  let savedIndex: Uint32Array | null = null;
+  if (state[0] === 1 && state[1] < 2) {
+    savedIndex = new Uint32Array(nClusters);
+    sidxH[state[1]].read(new Uint8Array(savedIndex.buffer), { at: 0 });
+  }
+  let alloc = new SlotAllocator(fileSlots, index, savedIndex);
   const entry = new Uint32Array(1);
   let dirty = false;
 
-  const writeIndexEntry = (c: number) => {
-    entry[0] = index[c];
-    idxH.write(new Uint8Array(entry.buffer), { at: c * 4 });
+  /** A short write (quota) must fail like a thrown one. */
+  const writeAll = (h: FileSystemSyncAccessHandle, buf: Uint8Array, at: number) => {
+    if (h.write(buf, { at }) !== buf.length) throw new Error('short write');
   };
 
   return {
@@ -123,15 +133,30 @@ async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
       return true;
     },
     write(c, src) {
-      let s = index[c];
-      if (s && s > savedSlots) {
-        datH.write(src, { at: (s - 1) * CLUSTER }); // written since the save
-      } else {
-        s = ++slots; // keep the saved version intact
-        datH.write(src, { at: (s - 1) * CLUSTER });
-        index[c] = s;
-        writeIndexEntry(c); // data before index: a torn write is dropped on load
+      const old = index[c];
+      if (old && alloc.writable(old)) {
+        writeAll(datH, src, (old - 1) * CLUSTER); // not part of the save: in place
+        dirty = true;
+        return;
       }
+      // A new slot keeps the saved version intact.
+      const s = alloc.alloc();
+      const reused = s <= Math.floor(datH.getSize() / CLUSTER);
+      try {
+        writeAll(datH, src, (s - 1) * CLUSTER);
+        // A slot inside the file can't be told apart on load from a good one,
+        // so a torn write there would go unnoticed (the check on load only
+        // catches an index entry past the end). Make the data durable before
+        // the index points at it. Appends keep the cheap order: data, then
+        // index, and a torn one is dropped on load.
+        if (reused) datH.flush();
+        entry[0] = s;
+        writeAll(idxH, new Uint8Array(entry.buffer), c * 4);
+      } catch (e) {
+        alloc.unalloc(s); // index[c] still has its old value
+        throw e;
+      }
+      index[c] = s; // only after both writes succeeded
       dirty = true;
     },
     flush() {
@@ -147,7 +172,7 @@ async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
     },
     reset() {
       index.fill(0);
-      slots = savedSlots = 0;
+      alloc = new SlotAllocator(0, index, null);
       state.fill(0);
       stH.write(new Uint8Array(state.buffer), { at: 0 });
       for (const h of [idxH, datH, ...snapH, ...sidxH]) h.truncate(0);
@@ -163,7 +188,7 @@ async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
       snapH[a].read(machine, { at: 0 });
       index.fill(0);
       sidxH[a].read(new Uint8Array(index.buffer), { at: 0 });
-      slots = savedSlots = state[2];
+      alloc = new SlotAllocator(state[2], index, index); // the live index is the save
       idxH.write(new Uint8Array(index.buffer), { at: 0 });
       idxH.flush();
       return machine;
@@ -181,13 +206,14 @@ async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
       sidxH[b].write(new Uint8Array(index.buffer), { at: 0 });
       snapH[b].flush();
       sidxH[b].flush();
-      // 3. flip
-      state[0] = 1;
-      state[1] = b;
-      state[2] = slots;
-      stH.write(new Uint8Array(state.buffer), { at: 0 });
+      // 3. flip. The in-memory state changes only once the write went through,
+      // so a failed flip leaves the old save active here as on storage.
+      const next = new Uint32Array([1, b, alloc.slots]);
+      stH.write(new Uint8Array(next.buffer), { at: 0 });
       stH.flush();
-      savedSlots = slots;
+      state.set(next);
+      // 4. slots only the previous save used are free now
+      alloc.onSaved(index);
     },
   };
 }
@@ -465,9 +491,35 @@ export class ChunkDisk {
   }
 
   // Delete the user's changes. The VM must be restarted afterwards.
-  reset() {
+  async reset() {
     this.overlay.reset();
     this.mod._blk_overlay_clear();
     this.stats.overlayClusters = 0;
+    await this.removeOtherOverlays();
+  }
+
+  /**
+   * Every disk image version keeps its own overlay directory; those of older
+   * versions are never read again. Only a Reset removes them (a load never
+   * does: the user may still want another version's files back).
+   */
+  private async removeOtherOverlays() {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const mine = `overlay-${this.id}`;
+      const names: string[] = [];
+      for await (const [name, handle] of root.entries()) {
+        if (handle.kind === 'directory' && name.startsWith('overlay-') && name !== mine) names.push(name);
+      }
+      for (const name of names) {
+        try {
+          await root.removeEntry(name, { recursive: true });
+        } catch (e) {
+          this.onEvent(`could not remove ${name}: ${e}`);
+        }
+      }
+    } catch (e) {
+      this.onEvent(`could not list old saved changes: ${e}`);
+    }
   }
 }

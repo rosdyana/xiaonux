@@ -513,7 +513,7 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
         post({ type: 'reset-failed', reason: disk.persistence });
         return;
       }
-      disk.reset();
+      await disk.reset();
       post({ type: 'reset-done' });
       return;
     }
@@ -611,8 +611,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       saveTimer = null;
       unsavedSince = 0;
       forcedSaveQueued = false;
-      disk.reset();
-      post({ type: 'reset-done' });
+      disk.reset().then(
+        () => post({ type: 'reset-done' }),
+        (err) => post({ type: 'error', message: String(err?.stack ?? err) }),
+      );
       break;
     case 'resize':
       if (vm) {
