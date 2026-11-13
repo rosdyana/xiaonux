@@ -20,7 +20,8 @@ export type ToWorker =
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'reset' }
   | { type: 'save'; reason: string }
-  | { type: 'net'; net: NetConfig };
+  | { type: 'net'; net: NetConfig }
+  | { type: 'jit-export' };
 
 export type FromWorker =
   | { type: 'console'; data: Uint8Array }
@@ -28,10 +29,11 @@ export type FromWorker =
   | { type: 'restored'; ms: number; agentOk: boolean }
   | { type: 'restart-cold' }
   | { type: 'fetch'; url: string; bytes: number }
-  | { type: 'stats'; mips: number; heapMb: number; outBytes: number; jit?: { blocks: number; modules: number; invalidated: number; resets: number } }
+  | { type: 'stats'; mips: number; heapMb: number; outBytes: number; jit?: { blocks: number; modules: number; invalidated: number; resets: number; preloaded?: number } }
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
+  | { type: 'jit-export'; bytes: Uint8Array; build: number }
   | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected' | 'rotated'; mode: string; detail?: string }
   | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }

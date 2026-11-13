@@ -21,6 +21,11 @@ interface Xemu extends DiskModule {
   _xn_jit_set_enabled(on: number): void;
   _xn_jit_set_check(on: number): void;
   _xn_jit_stat(which: number): number;
+  _xn_jit_export(plen: number): number;
+  _xn_jit_preload(ptr: number, len: number): number;
+  _xn_jit_build_id(): number;
+  _xn_brotli_decode(ptr: number, len: number, rawLen: number): number;
+  xnJitPreModule?: WebAssembly.Module | null;
   _console_queue_char(c: number): number;
   _console_resize(): void;
   ccall(name: string, ret: null, types: string[], args: unknown[]): void;
@@ -128,7 +133,7 @@ function tick() {
     const mips = lastStats ? (insns - lastInsns) / ((now - lastStats) * 1000) : 0;
     lastInsns = insns;
     post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal,
-      jit: { blocks: vm._xn_jit_stat(0), modules: vm._xn_jit_stat(1), invalidated: vm._xn_jit_stat(2), resets: vm._xn_jit_stat(3) } });
+      jit: { blocks: vm._xn_jit_stat(0), modules: vm._xn_jit_stat(1), invalidated: vm._xn_jit_stat(2), resets: vm._xn_jit_stat(3), preloaded: vm._xn_jit_stat(6) } });
     if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;
     lastStats = now;
@@ -157,6 +162,37 @@ interface BootDesc {
   snapshot?: { file: string; raw: number; cfg: string };
   /** chunks the first commands need: [hash, offset, length] into file */
   prefetch?: { file: string; index: [string, number, number][] };
+  /** translated code for common commands (4e), valid for one emulator build */
+  jit?: { file: string; build: number; raw?: number };
+}
+
+// Load shipped translations: compile off the VM thread, then register.
+async function preloadJit(base: string, jit: { file: string; build: number; raw?: number }) {
+  if (!vm || (vm._xn_jit_build_id() >>> 0) !== (jit.build >>> 0)) {
+    post({ type: 'log', message: 'shipped translations are for another emulator build; skipped' });
+    return;
+  }
+  const t = performance.now();
+  const fetched = await fetchCached(base + jit.file);
+  // .br bundles are decoded by the Brotli decoder in our WASM (CDN-independent)
+  let p: number, len: number;
+  if (jit.raw) {
+    const c = vm._malloc(fetched.length);
+    vm.HEAPU8.set(fetched, c);
+    p = vm._xn_brotli_decode(c, fetched.length, jit.raw);
+    vm._free(c);
+    if (!p) throw new Error('bundle failed to decode');
+    len = jit.raw;
+  } else {
+    p = vm._malloc(fetched.length);
+    vm.HEAPU8.set(fetched, p);
+    len = fetched.length;
+  }
+  const wasmLen = new DataView(vm.HEAPU8.buffer, p, 16).getUint32(12, true);
+  vm.xnJitPreModule = await WebAssembly.compile(vm.HEAPU8.slice(p + 16, p + 16 + wasmLen));
+  const n = vm._xn_jit_preload(p, len); // keeps its own copy of the index
+  vm._free(p);
+  post({ type: 'log', message: `shipped translations: ${n} blocks in ${Math.round(performance.now() - t)} ms` });
 }
 
 // ----- guest agent (/dev/hvc1) -----
@@ -291,6 +327,7 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       ready = true;
       post({ type: 'ready', ms: Math.round(performance.now() - t0), restored: restored === 1 });
       yieldNow();
+      if (desc.jit && jit && !jitCheck) setTimeout(() => preloadJit(base, desc.jit!).catch((e) => post({ type: 'log', message: `jit preload: ${e}` })), 0);
       // Warm the chunks the first commands will need, without delaying the prompt.
       if (desc.prefetch && disk && !record) {
         const d = disk;
@@ -371,6 +408,16 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       net?.resetAll();
       if (net) net.exit = makeExit(m.net);
       break;
+    case 'jit-export': {
+      if (!vm) break;
+      const lp = vm._malloc(4);
+      const p = vm._xn_jit_export(lp);
+      const len = new Uint32Array(vm.HEAPU8.buffer, lp, 1)[0];
+      const bytes = vm.HEAPU8.slice(p, p + len);
+      vm._free(p); vm._free(lp);
+      post({ type: 'jit-export', bytes, build: vm._xn_jit_build_id() >>> 0 }, [bytes.buffer]);
+      break;
+    }
     case 'save':
       saveNow(m.reason);
       break;

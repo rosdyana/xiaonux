@@ -216,6 +216,13 @@ async function boot(forceCold = false) {
         showNet(`blocked: ${m.host} (${m.reason})`, true);
         console.info(`[xiaonux] blocked ${m.host}: ${m.reason}`);
         break;
+      case 'jit-export': {
+        // for bench/jit-export.mjs: keep it as base64 on window
+        let bin = '';
+        for (let i = 0; i < m.bytes.length; i += 0x8000) bin += String.fromCharCode(...m.bytes.subarray(i, i + 0x8000));
+        (window as unknown as { xiaonuxJitBundle: unknown }).xiaonuxJitBundle = { build: m.build, b64: btoa(bin) };
+        break;
+      }
       case 'saved':
         console.info(`[xiaonux] saved machine (${m.reason}) ${(m.bytes / 2 ** 20).toFixed(1)} MB in ${m.ms} ms`);
         break;
@@ -266,6 +273,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => send({ type: 'save', reason: 'pagehide' }));
 (window as unknown as { xiaonuxSave: () => void }).xiaonuxSave = () => send({ type: 'save', reason: 'manual' });
+(window as unknown as { xiaonuxJitExport: () => void }).xiaonuxJitExport = () => send({ type: 'jit-export' });
 
 // For automation: read the terminal text and type into the guest.
 (window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {

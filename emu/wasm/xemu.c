@@ -212,6 +212,22 @@ EMSCRIPTEN_KEEPALIVE void vm_set_snapshot_raw(uint8_t *buf, int len)
     pending_snapshot_len = len;
 }
 
+/* called from JS: Brotli-decode a buffer into a new malloc'd buffer of
+   exactly raw_len bytes (NULL on error); JS frees it. */
+EMSCRIPTEN_KEEPALIVE uint8_t *xn_brotli_decode(const uint8_t *buf, int len, int raw_len)
+{
+    size_t out_len = raw_len;
+    uint8_t *out = malloc(raw_len ? raw_len : 1);
+    if (!out)
+        return NULL;
+    if (BrotliDecoderDecompress(len, buf, &out_len, out) != BROTLI_DECODER_RESULT_SUCCESS ||
+        out_len != (size_t)raw_len) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
 /* called from JS: save the running machine. Returns a malloc'd buffer
    (length in *plen) or NULL if busy; JS frees it. */
 EMSCRIPTEN_KEEPALIVE uint8_t *vm_snapshot_save(int *plen)

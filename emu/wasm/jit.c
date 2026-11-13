@@ -66,7 +66,9 @@ static struct { uint32_t key; int32_t fn; int32_t ninsn; } fast[1 << FAST_BITS];
 static inline uint32_t fast_idx(uint32_t key) { return (key >> 1) & ((1 << FAST_BITS) - 1); }
 
 /* stats */
-static uint64_t st_translated, st_modules, st_invalidated, st_resets, st_untranslatable;
+static uint64_t st_translated, st_modules, st_invalidated, st_resets, st_untranslatable, st_preloaded_hits;
+static xn_block_fn preload_lookup(uint8_t *ptr, int *ninsn);
+static int n_pre;
 
 static inline uint32_t hash_key(uint32_t k)
 {
@@ -204,6 +206,11 @@ xn_block_fn xn_jit_lookup(uint8_t *ptr, int *ninsn)
     /* not translated: count (lossy), queue when hot */
     {
         uint16_t *c = &counters[hash_key(key) & ((1 << COUNTER_BITS) - 1)];
+        if (*c < 2 && n_pre) {
+            /* first runs: maybe we shipped this exact code already */
+            xn_block_fn f = preload_lookup(ptr, ninsn);
+            if (f) return f;
+        }
         if (++*c >= HOT_THRESHOLD && queue_len < BATCH_MAX) {
             *c = 0;
             b = find(key, 1);
@@ -271,6 +278,7 @@ EMSCRIPTEN_KEEPALIVE double xn_jit_stat(int which)
     case 3: return (double)st_resets;
     case 4: return (double)n_blocks;
     case 5: return (double)st_untranslatable;
+    case 6: return (double)st_preloaded_hits;
     default: return 0;
     }
 }
@@ -1052,11 +1060,13 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
 /* ------------------------------------------------------------------ */
 /* module assembly + instantiation */
 
-EM_JS(int, js_jit_instantiate, (const uint8_t *buf, int len, int nfuncs), {
+EM_JS(int, js_jit_instantiate, (const uint8_t *buf, int len, int nfuncs, int permanent), {
     const J = Module.xnJit ??= { base: -1, next: -1 };
     let inst;
     try {
-        const mod = new WebAssembly.Module(HEAPU8.slice(buf, buf + len));
+        /* a shipped bundle arrives precompiled (async, off the VM thread) */
+        const mod = (permanent && Module.xnJitPreModule) || new WebAssembly.Module(HEAPU8.slice(buf, buf + len));
+        if (permanent) Module.xnJitPreModule = null;
         inst = new WebAssembly.Instance(mod, { e: {
             m: wasmMemory, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
             mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'], x1: wasmExports['xn_jit_exec1'],
@@ -1072,6 +1082,7 @@ EM_JS(int, js_jit_instantiate, (const uint8_t *buf, int len, int nfuncs), {
     const first = J.next;
     for (let i = 0; i < nfuncs; i++) wasmTable.set(first + i, inst.exports['f' + i]);
     J.next += nfuncs;
+    if (permanent) J.base = J.next;   /* resets reuse slots only above these */
     return first;
 });
 
@@ -1098,6 +1109,45 @@ static void mark_code_page(uint32_t key, Block *b)
                 e->vaddr = -1;
         }
     }
+}
+
+static void type_fn(Buf *o, int np, const uint8_t *p, int nr, uint8_t r);
+
+/* A module of nf block functions whose code-section bodies are in `code`. */
+static void assemble_module(Buf *mod, Buf *code, int nf)
+{
+    Buf sec = { 0 };
+    int i;
+    put_bytes(mod, "\0asm\1\0\0\0", 8);
+    uleb(&sec, 5);
+    type_fn(&sec, 1, (uint8_t[]){ T_I32 }, 1, T_I32);
+    type_fn(&sec, 3, (uint8_t[]){ T_I32, T_I64, T_I32 }, 1, T_I32);
+    type_fn(&sec, 4, (uint8_t[]){ T_I32, T_I64, T_I64, T_I32 }, 1, T_I32);
+    type_fn(&sec, 3, (uint8_t[]){ T_I64, T_I64, T_I32 }, 1, T_I64);
+    type_fn(&sec, 2, (uint8_t[]){ T_I32, T_I32 }, 1, T_I32);
+    section(mod, 1, &sec);
+    uleb(&sec, 6);
+    put_str(&sec, "e"); put_str(&sec, "m"); put(&sec, 0x02); put(&sec, 0x00); uleb(&sec, 1);
+    put_str(&sec, "e"); put_str(&sec, "ld"); put(&sec, 0x00); uleb(&sec, 1);
+    put_str(&sec, "e"); put_str(&sec, "st"); put(&sec, 0x00); uleb(&sec, 2);
+    put_str(&sec, "e"); put_str(&sec, "mulh"); put(&sec, 0x00); uleb(&sec, 3);
+    put_str(&sec, "e"); put_str(&sec, "div"); put(&sec, 0x00); uleb(&sec, 3);
+    put_str(&sec, "e"); put_str(&sec, "x1"); put(&sec, 0x00); uleb(&sec, 4);
+    section(mod, 2, &sec);
+    uleb(&sec, nf);
+    for (i = 0; i < nf; i++) uleb(&sec, 0);
+    section(mod, 3, &sec);
+    uleb(&sec, nf);
+    for (i = 0; i < nf; i++) {
+        char name[16];
+        snprintf(name, sizeof(name), "f%d", i);
+        put_str(&sec, name); put(&sec, 0x00); uleb(&sec, N_IMPORTS + i);
+    }
+    section(mod, 7, &sec);
+    uleb(&sec, nf);
+    put_bytes(&sec, code->b, code->len);
+    section(mod, 10, &sec);
+    free(sec.b);
 }
 
 /* Compile all queued blocks into one module. Called between slices. */
@@ -1135,6 +1185,8 @@ void xn_jit_flush(void)
     if (!nf)
         goto done;
 
+    assemble_module(&mod, &code, nf);
+    if (0) {
     put_bytes(&mod, "\0asm\1\0\0\0", 8);
     /* types: 0 block (i32)->i32, 1 ld (i32,i64,i32)->i32, 2 st (i32,i64,i64,i32)->i32, 3 (i64,i64,i32)->i64 */
     uleb(&sec, 5);
@@ -1169,8 +1221,9 @@ void xn_jit_flush(void)
     uleb(&sec, nf);
     put_bytes(&sec, code.b, code.len);
     section(&mod, 10, &sec);
+    }
 
-    base = js_jit_instantiate(mod.b, mod.len, nf);
+    base = js_jit_instantiate(mod.b, mod.len, nf, 0);
     if (base < 0) {
         for (i = 0; i < nf; i++) {
             Block *b = find(keys[i], 0);
@@ -1193,4 +1246,138 @@ void xn_jit_flush(void)
     free(mod.b); free(sec.b); free(code.b); free(body.b);
     if (n_blocks >= MAX_BLOCKS)
         xn_jit_reset();
+}
+
+/* ------------------------------------------------------------------ */
+/* 4e: shipped translations, keyed by block content */
+
+typedef struct { uint64_t hash; const uint8_t *bytes; uint16_t len, ninsn; int32_t fn; } Pre;
+static Pre *pre;
+static int pre_cap;   /* open addressing, cap = power of two */
+
+static uint64_t fnv(const uint8_t *p, int n)
+{
+    uint64_t h = 1469598103934665603ULL ^ (uint64_t)n;
+    while (n--) { h ^= *p++; h *= 1099511628211ULL; }
+    return h;
+}
+
+/* Identifies everything a translation depends on besides the guest bytes. */
+EMSCRIPTEN_KEEPALIVE uint32_t xn_jit_build_id(void)
+{
+    uint32_t v[] = { 4 /* codegen version */, OFF_PC, OFF_REG(0), OFF_NCYC, OFF_TMP, OFF_TLBR, OFF_TLBW,
+                     TLB_ESZ, TLB_SIZE, OFF_MIP, OFF_MIE, OFF_FREG(0), OFF_FS, MAX_BLOCK_INSNS };
+    return (uint32_t)fnv((const uint8_t *)v, sizeof(v));
+}
+
+static Pre *pre_find(uint64_t h)
+{
+    uint32_t i;
+    if (!pre_cap) return NULL;
+    for (i = (uint32_t)h & (pre_cap - 1); pre[i].len; i = (i + 1) & (pre_cap - 1))
+        if (pre[i].hash == h) return &pre[i];
+    return NULL;
+}
+
+/* Is the block starting at ptr one we shipped? Then use it right away. */
+static xn_block_fn preload_lookup(uint8_t *ptr, int *ninsn)
+{
+    static Insn ins[MAX_BLOCK_INSNS];
+    int n, end_off;
+    uint64_t h;
+    Pre *p;
+    Block *b;
+    if (!n_pre) return NULL;
+    n = decode_block(ptr, ins, &end_off);
+    if (!n) return NULL;
+    h = fnv(ptr, end_off);
+    p = pre_find(h);
+    if (!p || p->len != end_off || p->ninsn != n || memcmp(p->bytes, ptr, end_off) != 0)
+        return NULL;
+    b = find((uint32_t)(uintptr_t)ptr, 1);
+    if (!b || b->state == B_READY) return NULL;
+    b->state = B_READY;
+    b->fn = p->fn;
+    b->ninsn = n;
+    mark_code_page((uint32_t)(uintptr_t)ptr, b);
+    st_preloaded_hits++;
+    *ninsn = n;
+    return (xn_block_fn)(uintptr_t)p->fn;
+}
+
+/* Bundle: "XNJ1" | build_id u32 | n u32 | wasm_len u32 | wasm | n x (len u16, ninsn u16, bytes) */
+EMSCRIPTEN_KEEPALIVE int xn_jit_preload(const uint8_t *buf, int len)
+{
+    uint32_t n, wasm_len, i, off;
+    const uint8_t *idx;
+    int base;
+    if (len < 16 || memcmp(buf, "XNJ1", 4) != 0) return -1;
+    if (*(const uint32_t *)(buf + 4) != xn_jit_build_id()) return -2;   /* other emulator build */
+    n = *(const uint32_t *)(buf + 8);
+    wasm_len = *(const uint32_t *)(buf + 12);
+    if (16 + wasm_len > (uint32_t)len) return -1;
+    base = js_jit_instantiate(buf + 16, wasm_len, n, 1);
+    if (base < 0) return -3;
+    /* keep the index bytes: we compare guest code against them */
+    {
+        uint32_t idx_len = len - 16 - wasm_len;
+        uint8_t *copy = malloc(idx_len);
+        memcpy(copy, buf + 16 + wasm_len, idx_len);
+        idx = copy;
+        pre_cap = 1;
+        while (pre_cap < (int)n * 2) pre_cap <<= 1;
+        pre = calloc(pre_cap, sizeof(Pre));
+        for (i = 0, off = 0; i < n && off + 4 <= idx_len; i++) {
+            uint16_t blen = idx[off] | (idx[off + 1] << 8), ni = idx[off + 2] | (idx[off + 3] << 8);
+            const uint8_t *bytes = idx + off + 4;
+            uint64_t h = fnv(bytes, blen);
+            uint32_t j = (uint32_t)h & (pre_cap - 1);
+            while (pre[j].len) j = (j + 1) & (pre_cap - 1);
+            pre[j].hash = h; pre[j].bytes = bytes; pre[j].len = blen; pre[j].ninsn = ni; pre[j].fn = base + i;
+            off += 4 + blen;
+            n_pre++;
+        }
+    }
+    return n_pre;
+}
+
+/* Regenerate every translated block from the code now in RAM into one module
+   plus the content index. Returns a malloc'd bundle (caller frees). */
+EMSCRIPTEN_KEEPALIVE uint8_t *xn_jit_export(int *out_len)
+{
+    static Insn ins[MAX_BLOCK_INSNS];
+    Buf code = { 0 }, body = { 0 }, index = { 0 }, mod = { 0 }, out = { 0 };
+    int i, nf = 0;
+    for (i = 0; i < TABLE_SIZE; i++) {
+        Block *b = &blocks[i];
+        int n, end_off;
+        uint64_t h;
+        if (!b->key || b->state != B_READY) continue;
+        n = decode_block((const uint8_t *)(uintptr_t)b->key, ins, &end_off);
+        if (!n) continue;
+        h = fnv((const uint8_t *)(uintptr_t)b->key, end_off);
+        if (pre_find(h) && 0) continue;
+        body.len = 0;
+        gen_block(&body, ins, n, end_off);
+        uleb(&code, body.len);
+        put_bytes(&code, body.b, body.len);
+        put(&index, end_off & 0xff); put(&index, end_off >> 8);
+        put(&index, n & 0xff); put(&index, n >> 8);
+        put_bytes(&index, (const void *)(uintptr_t)b->key, end_off);
+        nf++;
+    }
+    assemble_module(&mod, &code, nf);
+    {
+        uint32_t hdr[4];
+        memcpy(hdr, "XNJ1", 4);
+        hdr[1] = xn_jit_build_id();
+        hdr[2] = nf;
+        hdr[3] = mod.len;
+        put_bytes(&out, hdr, 16);
+    }
+    put_bytes(&out, mod.b, mod.len);
+    put_bytes(&out, index.b, index.len);
+    free(code.b); free(body.b); free(index.b); free(mod.b);
+    *out_len = out.len;
+    return out.b;
 }
