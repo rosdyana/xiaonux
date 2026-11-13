@@ -1,5 +1,5 @@
 # Checks on every push and pull request: the page builds, the relay
-# typechecks, the network helper compiles, passes clippy and its tests, and the
+# typechecks and passes its unit tests, the network helper compiles, passes clippy and its tests, and the
 # native C unit tests for the emulator (disk-range check and snapshot buffer)
 # pass.
 # The emulator build, guest image and browser tests need local toolchains
@@ -51,6 +51,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: relay
       - run: pnpm typecheck
+        working-directory: relay
+      - run: pnpm test
         working-directory: relay
 
   helper:

@@ -7,8 +7,13 @@
 //
 // Only allowlisted host names, ports 80/443. Logs host names and byte
 // counts only, never content.
+//
+// A session's byte and socket-open budget is kept in one Durable Object per
+// session (see SessionBudget), so it holds across all of the session's
+// WebSockets, not just one.
 
 import { connect } from 'cloudflare:sockets';
+import { addBytes, tryOpen, sessionExpires, sessionNonce, SESSION_MAX_BYTES, SESSION_MAX_OPENS, type BudgetState } from './budget';
 
 export interface Env {
   ALLOWED_HOSTS: string;    // comma separated; "*.example.org" allows subdomains
@@ -16,6 +21,10 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   SESSION_KEY: string;      // HMAC key for session tokens
   DEV_NO_TURNSTILE?: string; // "1" only for local development
+  BUDGET: DurableObjectNamespace; // one SessionBudget per session
+  // Local testing of the session caps; honoured only when DEV_NO_TURNSTILE is "1".
+  MAX_OPENS_OVERRIDE?: string | number;
+  MAX_BYTES_OVERRIDE?: string | number;
 }
 
 const CONNECT = 1, DATA = 2, CONTINUE = 3, CLOSE = 4;
@@ -29,7 +38,19 @@ const BATCH_MS = 2;
 const ROTATE_BYTES = 1 << 20;
 const SESSION_SECONDS = 3600;
 const MAX_STREAMS = 6;            // free plan: 6 simultaneous outbound connections
-const MAX_BYTES = 512 * 2 ** 20;  // per session, both directions
+/** a WebSocket tells the session budget about its traffic in steps of about this many bytes */
+const REPORT_BYTES = 256 * 1024;
+/** the budget Durable Object deletes its data this long after the session expires */
+const BUDGET_GRACE_SECONDS = 300;
+
+function limits(env: Env): { maxOpens: number; maxBytes: number } {
+  const dev = env.DEV_NO_TURNSTILE === '1';
+  const pick = (v: string | number | undefined, d: number) => {
+    const n = Number(v);
+    return dev && v !== undefined && Number.isFinite(n) && n > 0 ? n : d;
+  };
+  return { maxOpens: pick(env.MAX_OPENS_OVERRIDE, SESSION_MAX_OPENS), maxBytes: pick(env.MAX_BYTES_OVERRIDE, SESSION_MAX_BYTES) };
+}
 
 // ----- policy -----
 function hostAllowed(host: string, env: Env): boolean {
@@ -47,7 +68,7 @@ function corsHeaders(origin: string | null, env: Env): Record<string, string> {
 const json = (body: unknown, status: number, headers: Record<string, string>) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
-// ----- sessions: "<expires>.<hmac>" -----
+// ----- sessions: "<expires>.<nonce>.<hmac>" -----
 async function hmac(key: string, msg: string): Promise<string> {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const sig = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg)));
@@ -83,6 +104,51 @@ async function verifyTurnstile(token: string, ip: string | null, env: Env): Prom
   return j.success === true;
 }
 
+// ----- per-session budget -----
+// One instance per session nonce. POST /open?exp=<unix seconds> counts a
+// WebSocket open; POST /bytes?n=<count> adds transferred bytes. Both answer
+// {"ok": boolean}: false once the session is out of sockets or bytes.
+export class SessionBudget {
+  private state: DurableObjectState;
+  private env: Env;
+  private s: BudgetState = { bytes: 0, opens: 0 };
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+    this.env = env;
+    state.blockConcurrencyWhile(async () => {
+      this.s = (await state.storage.get<BudgetState>('s')) ?? this.s;
+    });
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    const { maxOpens, maxBytes } = limits(this.env);
+    let ok: boolean;
+    if (url.pathname === '/open') {
+      ok = tryOpen(this.s, maxOpens, maxBytes);
+      // delete this object's data shortly after the session has expired
+      if ((await this.state.storage.getAlarm()) === null) {
+        const exp = Number(url.searchParams.get('exp'));
+        const now = Date.now() / 1000;
+        const end = Number.isFinite(exp) && exp > now ? Math.min(exp, now + SESSION_SECONDS) : now + SESSION_SECONDS;
+        await this.state.storage.setAlarm((end + BUDGET_GRACE_SECONDS) * 1000);
+      }
+    } else if (url.pathname === '/bytes') {
+      ok = addBytes(this.s, Number(url.searchParams.get('n')), maxBytes);
+    } else {
+      return new Response('not found', { status: 404 });
+    }
+    await this.state.storage.put('s', this.s);
+    return Response.json({ ok });
+  }
+
+  async alarm(): Promise<void> {
+    await this.state.storage.deleteAll();
+    this.s = { bytes: 0, opens: 0 };
+  }
+}
+
 // ----- WISP -----
 function packet(type: number, id: number, payload: Uint8Array): Uint8Array {
   const b = new Uint8Array(5 + payload.length);
@@ -101,9 +167,25 @@ interface RelayStream {
   closed: boolean;
 }
 
-function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
+function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext, budget: DurableObjectStub) {
   const streams = new Map<number, RelayStream>();
   const stats = { streams: 0, up: 0, down: 0, hosts: new Map<string, number>() };
+  const { maxBytes } = limits(env);
+  // Traffic in both directions is added up here and sent to the session's
+  // budget in steps (never per packet); `exhausted` is its answer.
+  const reportAt = Math.min(REPORT_BYTES, maxBytes / 8);
+  let unreported = 0;
+  let exhausted = false;
+  const report = () => {
+    if (unreported <= 0) return;
+    const n = unreported;
+    unreported = 0;
+    ctx.waitUntil(
+      budget.fetch(`https://budget/bytes?n=${n}`, { method: 'POST' })
+        .then(async (r) => { if (((await r.json()) as { ok?: boolean }).ok === false) exhausted = true; })
+        .catch(() => { /* bytes of a failed report go uncounted */ }));
+  };
+  const count = (n: number) => { unreported += n; if (unreported >= reportAt) report(); };
   const send = (type: number, id: number, payload: Uint8Array) => {
     try { ws.send(packet(type, id, payload)); } catch { /* socket gone */ }
   };
@@ -115,13 +197,13 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
     s.socket?.close().catch(() => {});
     if (notify) send(CLOSE, id, new Uint8Array([reason]));
   };
-  const overLimit = () => stats.up + stats.down > MAX_BYTES;
+  const overLimit = () => exhausted || stats.up + stats.down > maxBytes;
 
   async function open(id: number, host: string, port: number) {
     const s: RelayStream = { writer: null, pending: [], socket: null, processed: 0, closed: false };
     streams.set(id, s);
     if (!PORTS.has(port) || !hostAllowed(host, env)) return closeStream(id, CLOSE_BLOCKED);
-    if (streams.size > MAX_STREAMS) return closeStream(id, CLOSE_THROTTLED);
+    if (overLimit() || streams.size > MAX_STREAMS) return closeStream(id, CLOSE_THROTTLED);
     stats.streams++;
     let socket: Socket;
     try {
@@ -154,6 +236,7 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
         const { value, done } = await reader.read();
         if (done || s.closed) break;
         stats.down += value.length;
+        count(value.length);
         stats.hosts.set(host, (stats.hosts.get(host) ?? 0) + value.length);
         acc.push(value);
         accLen += value.length;
@@ -169,6 +252,7 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
   }
 
   async function write(id: number, s: RelayStream, d: Uint8Array) {
+    if (overLimit()) return closeStream(id, CLOSE_THROTTLED);
     if (!s.writer) { s.pending.push(d); return; }
     try {
       await s.writer.write(d);
@@ -176,6 +260,8 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
       return closeStream(id, CLOSE_NETWORK);
     }
     stats.up += d.length;
+    count(d.length);
+    if (overLimit()) return closeStream(id, CLOSE_THROTTLED);
     if (++s.processed >= BUFFER / 2) {
       s.processed = 0;
       send(CONTINUE, id, u32(BUFFER));
@@ -216,6 +302,7 @@ function wispSession(ws: WebSocket, env: Env, ctx: ExecutionContext) {
   }
   ws.addEventListener('close', () => {
     for (const id of [...streams.keys()]) closeStream(id, CLOSE_VOLUNTARY, false);
+    report();
     // host names and byte counts only
     console.log(JSON.stringify({ streams: stats.streams, up: stats.up, down: stats.down, hosts: Object.fromEntries(stats.hosts) }));
   });
@@ -254,10 +341,24 @@ export default {
     }
     if (url.pathname === '/wisp') {
       if (req.headers.get('Upgrade') !== 'websocket') return json({ error: 'expected websocket' }, 426, cors);
+      // every WebSocket opened with this session counts against its budget
+      const token = url.searchParams.get('session')!; // checkSession passed above
+      const nonce = sessionNonce(token);
+      if (!nonce) return json({ error: 'no session' }, 401, cors);
+      const budget = env.BUDGET.get(env.BUDGET.idFromName(nonce));
+      let allowed = false;
+      try {
+        const r = await budget.fetch(`https://budget/open?exp=${sessionExpires(token) ?? ''}`, { method: 'POST' });
+        if (r.ok) allowed = ((await r.json()) as { ok?: boolean }).ok === true;
+        else return json({ error: 'session budget unavailable' }, 503, cors);
+      } catch {
+        return json({ error: 'session budget unavailable' }, 503, cors);
+      }
+      if (!allowed) return json({ error: 'session limit reached' }, 429, cors);
       const pair = new WebSocketPair();
       const [client, server] = [pair[0], pair[1]];
       server.accept();
-      wispSession(server, env, ctx);
+      wispSession(server, env, ctx, budget);
       return new Response(null, { status: 101, webSocket: client });
     }
     return json({ error: 'not found' }, 404, cors);

@@ -6,3 +6,13 @@ compatibility_date = "2026-10-01"
 ALLOWED_HOSTS = "pypi.org,files.pythonhosted.org,deb.debian.org,security.debian.org,github.com,objects.githubusercontent.com,codeload.github.com"
 ALLOWED_ORIGINS = "https://xiaonux.dev,https://www.xiaonux.dev,https://xiaonux.pages.dev,http://localhost:5180"
 # Secrets (wrangler secret put): SESSION_KEY, TURNSTILE_SECRET
+
+# One SessionBudget Durable Object per session keeps its byte and socket-open
+# budget across all of the session's WebSockets.
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "SessionBudget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SessionBudget"]
