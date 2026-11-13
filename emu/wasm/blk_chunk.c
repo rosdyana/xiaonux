@@ -35,7 +35,7 @@
 /* provided in lib.js */
 extern void js_fetch_chunk(int block, int hash_index);
 extern int js_overlay_read(uint32_t cluster, uint8_t *buf);
-extern void js_overlay_write(uint32_t cluster, const uint8_t *buf);
+extern int js_overlay_write(uint32_t cluster, const uint8_t *buf);  /* 0 = ok, -1 = failed */
 extern void js_disk_event(int kind, int block, int value);
 
 enum { EV_FETCH_DONE = 1, EV_BAD_HASH = 2, EV_DECODE_ERROR = 3 };
@@ -230,13 +230,15 @@ static int process_request(ChunkDisk *d)
             }
         } else {
             if (in_off == 0 && n == SECTORS_PER_CLUSTER) {
-                js_overlay_write(c, d->req_buf);
+                if (js_overlay_write(c, d->req_buf) < 0)
+                    return -1;   /* storage refused the write: I/O error */
             } else {
                 /* partial cluster: read-modify-write */
                 if (read_cluster(d, c, tmp, &wait))
                     goto wait_block;
                 memcpy(tmp + in_off * SECTOR_SIZE, d->req_buf, n * SECTOR_SIZE);
-                js_overlay_write(c, tmp);
+                if (js_overlay_write(c, tmp) < 0)
+                    return -1;
             }
             overlay_set(d, c);
         }

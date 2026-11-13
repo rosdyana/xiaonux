@@ -341,14 +341,27 @@ export class ChunkDisk {
     // After a reset starts, nothing may reach the (now empty) overlay: a write
     // that waited on a chunk download would put a stale cluster into it.
     if (this.frozen) return true;
-    this.changedSinceSave = true;
     const isNew = !this.overlay.has(cluster);
-    this.overlay.write(cluster, this.mod.HEAPU8.subarray(ptr, ptr + CLUSTER));
+    // This runs inside a guest disk request: an exception here would unwind
+    // through WebAssembly and stop the VM mid-request (e.g. storage quota
+    // exceeded). Report failure instead; C turns it into an I/O error.
+    try {
+      this.overlay.write(cluster, this.mod.HEAPU8.subarray(ptr, ptr + CLUSTER));
+    } catch (e) {
+      this.stats.errors++;
+      this.onEvent(`overlay write failed: ${e}`);
+      return false;
+    }
+    this.changedSinceSave = true;
     if (isNew) this.stats.overlayClusters++;
     if (this.flushTimer === null) {
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
-        this.overlay.flush();
+        try {
+          this.overlay.flush();
+        } catch (e) {
+          this.onEvent(`overlay flush failed: ${e}`);
+        }
       }, 500);
     }
     this.onWrite();

@@ -409,8 +409,15 @@ function saveNow(reason: string, attempt = 0) {
     }
     return;
   }
-  disk.saveUserSnapshot(vm.HEAPU8.subarray(p, p + len));
-  vm._free(p);
+  try {
+    disk.saveUserSnapshot(vm.HEAPU8.subarray(p, p + len));
+  } catch (e) {
+    // e.g. storage quota exceeded: the last good save stays active
+    post({ type: 'log', message: `save failed: ${e}` });
+    return;
+  } finally {
+    vm._free(p);
+  }
   unsavedSince = 0;
   post({ type: 'saved', reason, ms: Math.round(performance.now() - t), bytes: len });
 }
