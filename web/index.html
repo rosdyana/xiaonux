@@ -13,8 +13,8 @@
       <label class="net">Network
         <select id="netmode">
           <option value="off">Off</option>
-          <option value="helper">This computer</option>
-          <option value="relay" disabled>Relay (allowed hosts)</option>
+          <option value="helper">This computer (xiaonux-net)</option>
+          <option value="relay" disabled>Relay (pip/apt/GitHub only)</option>
         </select>
       </label>
       <span id="netstatus"></span>
@@ -22,6 +22,15 @@
       <span id="disk"></span>
       <span id="stats"></span>
     </header>
+    <aside id="netpanel" hidden>
+      <div>
+        <strong>Internet is off.</strong>
+        To use <code>pip</code>, <code>apt</code> or <code>curl</code>, run <b>xiaonux-net</b> on this computer.
+        It shares your internet with this tab only and opens this page paired.
+        <span id="netdl"></span>
+      </div>
+      <button id="netpanel-close" class="secondary" aria-label="Dismiss">Not now</button>
+    </aside>
     <main id="term"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>

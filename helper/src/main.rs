@@ -39,6 +39,7 @@ const CLOSE_TIMEOUT: u8 = 0x43;
 const CLOSE_REFUSED: u8 = 0x44;
 const CLOSE_BLOCKED: u8 = 0x48;
 
+#[derive(Clone)]
 struct Config {
     port: u16,
     token: String,
@@ -46,6 +47,7 @@ struct Config {
     allow_lan: bool,
     ports: Option<Vec<u16>>, // None = any port
     verbose: bool,
+    open: bool,
 }
 
 fn usage() -> ! {
@@ -59,6 +61,7 @@ fn usage() -> ! {
          \x20 --token T         pairing token (default: random, printed)\n\
          \x20 --any-port        allow any destination port (default 80, 443)\n\
          \x20 --allow-lan       allow loopback / private / LAN destinations\n\
+         \x20 --no-open         don't open the pairing link in the browser\n\
          \x20 -v                log each connection (host and bytes only)",
         env!("CARGO_PKG_VERSION")
     );
@@ -73,6 +76,7 @@ fn parse_args() -> Config {
         allow_lan: false,
         ports: Some(vec![80, 443]),
         verbose: false,
+        open: true,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -83,10 +87,15 @@ fn parse_args() -> Config {
             "--any-port" => c.ports = None,
             "--allow-lan" => c.allow_lan = true,
             "-v" | "--verbose" => c.verbose = true,
+            "--no-open" => c.open = false,
             _ => usage(),
         }
     }
     if c.origins.is_empty() {
+        // The published page can be baked in at build time: XIAONUX_ORIGIN=https://… cargo build
+        if let Some(o) = option_env!("XIAONUX_ORIGIN") {
+            c.origins.push(o.trim_end_matches('/').to_string());
+        }
         c.origins.push("http://localhost:5180".into());
     }
     if c.token.is_empty() {
@@ -108,9 +117,14 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    println!("xiaonux-net listening on {addr}");
+    println!("xiaonux-net {} is sharing this computer's internet with xiaonux.", env!("CARGO_PKG_VERSION"));
+    println!("Listening on {addr} (this computer only). Keep this window open while you use it.\n");
     for o in &cfg.origins {
-        println!("Open {o}/?net=helper&port={}&token={}", cfg.port, cfg.token);
+        println!("Pair:  {o}/?net=helper&port={}&token={}", cfg.port, cfg.token);
+    }
+    if cfg.open {
+        let url = format!("{}/?net=helper&port={}&token={}", cfg.origins[0], cfg.port, cfg.token);
+        open_browser(&url);
     }
     loop {
         let Ok((sock, _)) = listener.accept().await else { continue };
@@ -118,6 +132,19 @@ async fn main() {
         tokio::spawn(async move {
             let _ = handle(sock, cfg).await;
         });
+    }
+}
+
+/// Open the pairing link in the default browser (best effort).
+fn open_browser(url: &str) {
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let r = std::process::Command::new("xdg-open").arg(url).spawn();
+    if r.is_err() {
+        println!("(Couldn't open a browser: copy the Pair link above.)");
     }
 }
 
@@ -297,7 +324,7 @@ async fn connect(host: &str, port: u16, cfg: &Config) -> Result<TcpStream, u8> {
 /// Round trip by TCP connect time (works without privileges on every OS).
 async fn ping(host: &str, cfg: &Config) -> Option<f64> {
     for port in [443u16, 80] {
-        let Ok(addrs) = resolve(host, port, &Config { ports: None, ..clone_cfg(cfg) }).await else { return None };
+        let Ok(addrs) = resolve(host, port, &Config { ports: None, ..cfg.clone() }).await else { return None };
         let t = Instant::now();
         if let Ok(Ok(_)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(addrs[0])).await {
             return Some(t.elapsed().as_secs_f64() * 1000.0);
@@ -306,16 +333,6 @@ async fn ping(host: &str, cfg: &Config) -> Option<f64> {
     None
 }
 
-fn clone_cfg(c: &Config) -> Config {
-    Config {
-        port: c.port,
-        token: c.token.clone(),
-        origins: c.origins.clone(),
-        allow_lan: c.allow_lan,
-        ports: c.ports.clone(),
-        verbose: c.verbose,
-    }
-}
 
 fn packet(kind: u8, id: u32, payload: &[u8]) -> Message {
     let mut b = Vec::with_capacity(5 + payload.len());

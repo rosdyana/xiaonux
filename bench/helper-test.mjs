@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 
 const bin = process.argv[2] ?? '../helper/target/release/xiaonux-net';
 const PORT = 18787, TOKEN = 'testtoken', ORIGIN = 'http://localhost:5180';
-const helper = spawn(bin, ['--port', String(PORT), '--token', TOKEN], { stdio: ['ignore', 'pipe', 'inherit'] });
+const helper = spawn(bin, ['--port', String(PORT), '--token', TOKEN, '--no-open'], { stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((r) => helper.stdout.once('data', r));
 
 const results = [];

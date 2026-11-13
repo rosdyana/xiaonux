@@ -109,12 +109,56 @@ function showNet(text: string, blocked = false) {
   netStatusEl.classList.toggle('blocked', blocked);
 }
 showNet(netPrefs.mode === 'helper' && !netPrefs.helperToken ? 'run xiaonux-net and open its link' : '');
+
+// ----- "internet is off" panel with the helper download for this OS -----
+const panel = $('netpanel');
+const PANEL_KEY = 'xiaonux.netpanel.dismissed';
+function osKey(): { label: string; match: RegExp }[] {
+  const ua = navigator.userAgent;
+  const all = [
+    { label: 'Windows (.msi)', match: /windows-x86_64\.msi$/ },
+    { label: 'macOS', match: /macos-universal\.zip$/ },
+    { label: 'Linux x86_64', match: /linux-x86_64\.tar\.gz$/ },
+    { label: 'Linux ARM64', match: /linux-aarch64\.tar\.gz$/ },
+  ];
+  // put this visitor's OS first
+  const first = /Windows/.test(ua) ? 0 : /Mac OS X|Macintosh/.test(ua) ? 1 : /aarch64|arm64/i.test(ua) ? 3 : /Linux/.test(ua) ? 2 : 0;
+  return [all[first], ...all.filter((_, i) => i !== first)];
+}
+async function showNetPanel() {
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(PANEL_KEY) === '1'; } catch { /* private mode */ }
+  if (netPrefs.mode !== 'off' || dismissed) { panel.hidden = true; return; }
+  panel.hidden = false;
+  try {
+    const latest = (await (await fetch('/vm/helper/latest.json', { cache: 'no-cache' })).json()) as { files: Record<string, number> };
+    const names = Object.keys(latest.files);
+    $('netdl').replaceChildren(...osKey().flatMap(({ label, match }) => {
+      const f = names.find((n) => match.test(n));
+      if (!f) return [];
+      const a = document.createElement('a');
+      a.href = `/vm/helper/${f}`;
+      a.textContent = label;
+      a.download = f;
+      return [a];
+    }));
+  } catch {
+    $('netdl').textContent = '';
+  }
+}
+$('netpanel-close').addEventListener('click', () => {
+  panel.hidden = true;
+  try { localStorage.setItem(PANEL_KEY, '1'); } catch { /* private mode */ }
+});
+showNetPanel();
 netSel.addEventListener('change', async () => {
   netPrefs.mode = netSel.value as NetPrefs['mode'];
   saveNetPrefs(netPrefs);
   if (netPrefs.mode === 'relay' && !(await ensureRelaySession())) return;
   if (netPrefs.mode === 'helper' && !netPrefs.helperToken) showNet('run xiaonux-net and open its link');
   else showNet(netPrefs.mode === 'off' ? 'off' : '');
+  if (netPrefs.mode === 'off') { try { localStorage.removeItem(PANEL_KEY); } catch { /* */ } }
+  showNetPanel();
   send({ type: 'net', net: netConfig() });
 });
 const diskEl = $('disk');

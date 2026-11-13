@@ -25,3 +25,11 @@ button.secondary { background: transparent; color: var(--muted); border: 1px sol
 select { font: inherit; color: var(--fg); background: #161b22; border: 1px solid #2c3540; border-radius: 4px; padding: 2px 6px; margin-left: 4px; }
 #netstatus.blocked { color: #e3a857; }
 .turnstile { position: fixed; right: 16px; bottom: 16px; z-index: 10; }
+#netpanel { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 8px 16px; border-bottom: 1px solid #222a33; background: #12171d; color: var(--fg); }
+#netpanel[hidden] { display: none; }
+#netpanel a { color: var(--accent); margin-left: 6px; white-space: nowrap; }
+#netpanel code { color: var(--muted); }
+#netdl { display: inline-block; margin-left: 4px; }
+#netpanel button { white-space: nowrap; flex: none; }
+#netdl a + a::before { content: "·"; color: var(--muted); margin-right: 6px; }
