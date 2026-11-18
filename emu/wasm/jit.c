@@ -55,6 +55,12 @@ static uint8_t *ram_base;
 static uint64_t ram_size;
 static int32_t *page_head;   /* per RAM page: first block, -1 = none */
 static uint8_t *code_page;   /* per RAM page: has translations */
+static uint8_t *page_inval;  /* per RAM page: invalidations so far (saturating) */
+static uint32_t *page_gen;    /* per RAM page: bumped on invalidation (stale async regions) */
+static uint32_t *page_rseq;   /* per RAM page: last region build sequence number */
+static uint32_t *page_rinst;  /* per RAM page: sequence number of the installed region */
+static uint16_t *page_rn;     /* per RAM page: blocks in the last region built */
+static void pend_clear(void);
 static int jit_enabled = 1;
 extern int xn_check_mode;
 static RISCVCPUState *cpu;
@@ -126,8 +132,14 @@ void xn_jit_init(RISCVCPUState *s, uint8_t *ram, uint64_t size)
     ram_size = size;
     free(page_head);
     free(code_page);
+    free(page_inval); free(page_gen); free(page_rseq); free(page_rinst); free(page_rn);
     page_head = malloc(n * sizeof(int32_t));
     code_page = mallocz(n);
+    page_inval = mallocz(n);
+    page_gen = mallocz(n * sizeof(uint32_t));
+    page_rseq = mallocz(n * sizeof(uint32_t));
+    page_rinst = mallocz(n * sizeof(uint32_t));
+    page_rn = mallocz(n * sizeof(uint16_t));
     xn_jit_reset();
 }
 
@@ -145,11 +157,22 @@ void xn_jit_reset(void)
         page_head[i] = -1;
     if (code_page)
         memset(code_page, 0, n);
+    if (page_inval)
+        memset(page_inval, 0, n);
+    if (page_rn) {
+        memset(page_gen, 0, n * sizeof(uint32_t));
+        memset(page_rseq, 0, n * sizeof(uint32_t));
+        memset(page_rinst, 0, n * sizeof(uint32_t));
+        memset(page_rn, 0, n * sizeof(uint16_t));
+    }
+    pend_clear();
     memset(counters, 0, sizeof(counters));
     memset(fast, 0, sizeof(fast));
     js_jit_reset_slots();
     st_resets++;
 }
+
+int xn_jit_inval_hit;
 
 /* Drop all translations in the RAM page containing host address `host`. */
 void xn_jit_invalidate_host_page(uintptr_t host)
@@ -157,6 +180,10 @@ void xn_jit_invalidate_host_page(uintptr_t host)
     int page = ram_page_of((uint32_t)host), e;
     if (page < 0 || !code_page[page])
         return;
+    xn_jit_inval_hit = 1;   /* the running block/region may hold stale code: helpers make it leave */
+    if (page_inval[page] < 255) page_inval[page]++;
+    page_gen[page]++;   /* regions still compiling for this page are now stale */
+    page_rn[page] = 0;
     /* unlink as we go: a retranslated block is linked in again later */
     for (e = page_head[page]; e >= 0; ) {
         Block *b = &blocks[e];
@@ -195,7 +222,7 @@ xn_block_fn xn_jit_lookup(uint8_t *ptr, int *ninsn)
     if (!jit_enabled || ram_page_of(key) < 0)
         return NULL;
     b = find(key, 0);
-    if (b) {
+    if (b && b->state != B_COUNTING) {
         if (b->state != B_READY)
             return NULL;
         fast[fi].key = key;
@@ -207,12 +234,13 @@ xn_block_fn xn_jit_lookup(uint8_t *ptr, int *ninsn)
     /* not translated: count (lossy), queue when hot */
     {
         uint16_t *c = &counters[hash_key(key) & ((1 << COUNTER_BITS) - 1)];
+        int pg = ram_page_of(key);   /* >= 0 here, checked above */
         if (*c < 2 && n_pre) {
             /* first runs: maybe we shipped this exact code already */
             xn_block_fn f = preload_lookup(ptr, ninsn);
             if (f) return f;
         }
-        if (++*c >= HOT_THRESHOLD && queue_len < BATCH_MAX) {
+        if (++*c >= HOT_THRESHOLD && queue_len < BATCH_MAX && page_inval[pg] < 4) {
             *c = 0;
             b = find(key, 1);
             if (b && b->state == B_COUNTING) {
@@ -224,25 +252,53 @@ xn_block_fn xn_jit_lookup(uint8_t *ptr, int *ninsn)
     return NULL;
 }
 
+/* measurement counters (exposed via xn_jit_stat 27..50) */
+static uint64_t st_trans[5];        /* block exits by return code: 0 end,1 exc,2 direct,3 jalr,4 loop bail */
+static uint64_t st_trans_same[5];   /* ... whose next pc is in the same 4 KB guest page as the block's entry pc */
+static uint64_t st_jit_insns;       /* guest instructions retired by translated code */
+static uint64_t st_entry_hist[8];   /* insns per block call: [0]=1,[1]=2-3,[2]=4-7,[3]=8-15,[4]=16-31,[5]=32-63,[6]=64-127,[7]=128+ */
+static uint64_t st_stop[4];         /* why xn_jit_run returned: 0 budget/interrupt/power, 1 code TLB miss, 2 lookup miss, 3 budget < block len */
+static uint64_t st_runs;            /* xn_jit_run calls (entries from the interpreter) */
+
 /* Run translated blocks back to back while the next one is translated, the
    budget covers it and no interrupt is pending (the interpreter checks
    those between blocks). Returns when the interpreter must take over. */
+/* XN_JIT_STATS: per-transition counters (hot loop; off by default) */
+#ifdef XN_JIT_STATS
+#define ST(x) x
+#else
+#define ST(x) do { } while (0)
+#endif
+
 void xn_jit_run(RISCVCPUState *s, xn_block_fn f)
 {
+    ST(st_runs++);
     for (;;) {
         target_ulong pc;
         uint32_t idx;
-        int n;
-        f(s);
-        if (s->n_cycles <= 0 || (s->mip & s->mie) || s->power_down_flag)
-            return;
+        int n, rc;
+#ifdef XN_JIT_STATS
+        int nc0 = s->n_cycles, d, k, b = 0;
+        target_ulong pc0 = s->pc;
+#endif
+        rc = f(s);
+        (void)rc;
+#ifdef XN_JIT_STATS
+        d = nc0 - s->n_cycles;
+        st_jit_insns += d;
+        k = (unsigned)rc < 5 ? rc : 1;
+        st_trans[k]++;
+        if (((s->pc ^ pc0) >> 12) == 0) st_trans_same[k]++;
+        while (b < 7 && d >= (2 << b)) b++;
+        st_entry_hist[b]++;
+#endif
+        if (s->n_cycles <= 0 || (s->mip & s->mie) || s->power_down_flag) { ST(st_stop[0]++); return; }
         pc = s->pc;
         idx = (pc >> PG_SHIFT) & (TLB_SIZE - 1);
-        if (s->tlb_code[idx].vaddr != (pc & ~(target_ulong)PG_MASK))
-            return; /* code TLB miss: let the interpreter refill it */
+        if (s->tlb_code[idx].vaddr != (pc & ~(target_ulong)PG_MASK)) { ST(st_stop[1]++); return; } /* code TLB miss: let the interpreter refill it */
         f = xn_jit_lookup((uint8_t *)(s->tlb_code[idx].mem_addend + (uintptr_t)pc), &n);
-        if (!f || s->n_cycles < n)
-            return;
+        if (!f) { ST(st_stop[2]++); return; }
+        if (s->n_cycles < n) { ST(st_stop[3]++); return; }
     }
 }
 
@@ -270,6 +326,10 @@ EMSCRIPTEN_KEEPALIVE void xn_jit_set_check(int on)
     xn_jit_reset();
 }
 
+extern uint64_t xn_exec1_count[9], xn_exec1_nx[9], xn_mulh_count, xn_div_count; /* riscv_cpu.c */
+extern uint64_t xn_check_count, xn_check_skipped;
+static uint64_t st_regions, st_region_blocks;   /* page regions built, blocks routed through them */
+
 EMSCRIPTEN_KEEPALIVE double xn_jit_stat(int which)
 {
     switch (which) {
@@ -280,7 +340,22 @@ EMSCRIPTEN_KEEPALIVE double xn_jit_stat(int which)
     case 4: return (double)n_blocks;
     case 5: return (double)st_untranslatable;
     case 6: return (double)st_preloaded_hits;
-    default: return 0;
+    case 25: return (double)xn_mulh_count;
+    case 26: return (double)xn_div_count;
+    case 37: return (double)st_jit_insns;
+    case 50: return (double)st_runs;
+    case 51: return (double)st_regions;
+    case 52: return (double)st_region_blocks;
+    case 53: return (double)xn_check_count;
+    case 54: return (double)xn_check_skipped;
+    default:
+        if (which >= 7 && which <= 15) return (double)xn_exec1_count[which - 7];
+        if (which >= 16 && which <= 24) return (double)xn_exec1_nx[which - 16];
+        if (which >= 27 && which <= 31) return (double)st_trans[which - 27];
+        if (which >= 32 && which <= 36) return (double)st_trans_same[which - 32];
+        if (which >= 38 && which <= 45) return (double)st_entry_hist[which - 38];
+        if (which >= 46 && which <= 49) return (double)st_stop[which - 46];
+        return 0;
     }
 }
 
@@ -300,7 +375,7 @@ enum {
     OP_MUL, OP_MULH, OP_MULHSU, OP_MULHU, OP_DIV, OP_DIVU, OP_REM, OP_REMU,
     OP_MULW, OP_DIVW, OP_DIVUW, OP_REMW, OP_REMUW,
     OP_NOP,      /* fence */
-    OP_FLD, OP_FSD, OP_FSGNJ_D, OP_FMV_X_D, OP_FMV_D_X,   /* inline FP (no fflags) */
+    OP_FLD, OP_FSD, OP_FSGNJ_D, OP_FMV_X_D, OP_FMV_D_X, OP_FARITH_D, OP_FCMP_D,   /* inline FP (FARITH/FCMP: native fast path, exact fallback) */
     OP_EXEC1,    /* run this one instruction on the interpreter (FP, AMO, FP CSRs) */
 };
 
@@ -308,7 +383,9 @@ typedef struct {
     uint8_t op, rd, rs1, rs2, len;   /* rd/rs1/rs2: integer registers (0 = none) */
     uint8_t stores;   /* EXEC1: may write memory (checker can't replay it) */
     uint8_t frd, frs1, frs2;         /* FP registers of inline FP ops */
-    uint8_t sub;                     /* FSGNJ_D: 0 = j, 1 = jn, 2 = jx */
+    uint8_t sub;                     /* FSGNJ_D: 0 = j, 1 = jn, 2 = jx;
+                                        FARITH_D: 0 add 1 sub 2 mul 3 div 4 sqrt; FCMP_D: 0 fle 1 flt 2 feq */
+    uint8_t rm;                      /* FARITH_D: static rounding mode (7 = dynamic) */
     uint32_t raw;                    /* the instruction (for the FP-disabled fallback) */
     int64_t imm;
 } Insn;
@@ -339,6 +416,17 @@ static int decode32(uint32_t x, Insn *d)
     if (opc == 0x53 && f7 == 0x11 && f3 <= 2) {            /* fsgnj{,n,x}.d */
         d->op = OP_FSGNJ_D; d->sub = f3; d->frd = d->rd; d->frs1 = d->rs1; d->frs2 = d->rs2;
         d->rd = d->rs1 = d->rs2 = 0; return 1;
+    }
+    if (opc == 0x53 && (f3 == 0 || f3 == 7) &&
+        (f7 == 0x01 || f7 == 0x05 || f7 == 0x09 || f7 == 0x0d || (f7 == 0x2d && d->rs2 == 0))) {
+        /* fadd/fsub/fmul/fdiv/fsqrt.d in RNE or dynamic rounding: native fast path */
+        d->op = OP_FARITH_D; d->sub = f7 == 0x2d ? 4 : f7 >> 2; d->rm = f3;
+        d->frd = d->rd; d->frs1 = d->rs1; d->frs2 = f7 == 0x2d ? 0 : d->rs2;
+        d->rd = d->rs1 = d->rs2 = 0; return 1;
+    }
+    if (opc == 0x53 && f7 == 0x51 && f3 <= 2) {             /* fle/flt/feq.d */
+        d->op = OP_FCMP_D; d->sub = f3; d->frs1 = d->rs1; d->frs2 = d->rs2;
+        d->rs1 = d->rs2 = 0; return 1;                     /* rd stays: integer result */
     }
     if (opc == 0x53 && f7 == 0x71 && f3 == 0 && d->rs2 == 0) { /* fmv.x.d */
         d->op = OP_FMV_X_D; d->frs1 = d->rs1; d->rs1 = 0; return 1;
@@ -372,20 +460,20 @@ static int decode32(uint32_t x, Insn *d)
         if (f3 >= 5) d->rs1 = 0;  /* immediate forms */
         return 1;
     }
-    case 0x37: d->op = OP_LUI; d->imm = (int32_t)(x & 0xfffff000); return 1;
-    case 0x17: d->op = OP_AUIPC; d->imm = (int32_t)(x & 0xfffff000); return 1;
+    case 0x37: d->op = OP_LUI; d->rs1 = d->rs2 = 0; d->imm = (int32_t)(x & 0xfffff000); return 1;
+    case 0x17: d->op = OP_AUIPC; d->rs1 = d->rs2 = 0; d->imm = (int32_t)(x & 0xfffff000); return 1;
     case 0x6f:
-        d->op = OP_JAL;
+        d->op = OP_JAL; d->rs1 = d->rs2 = 0;
         d->imm = sext((BITS(x, 31, 31) << 20) | (BITS(x, 19, 12) << 12) |
                       (BITS(x, 20, 20) << 11) | (BITS(x, 30, 21) << 1), 21);
         return 1;
     case 0x67:
         if (f3 != 0) return 0;
-        d->op = OP_JALR; d->imm = sext(x >> 20, 12); return 1;
+        d->op = OP_JALR; d->rs2 = 0; d->imm = sext(x >> 20, 12); return 1;
     case 0x63: {
         static const uint8_t ops[8] = { OP_BEQ, OP_BNE, 0, 0, OP_BLT, OP_BGE, OP_BLTU, OP_BGEU };
         if (!ops[f3]) return 0;
-        d->op = ops[f3];
+        d->op = ops[f3]; d->rd = 0;
         d->imm = sext((BITS(x, 31, 31) << 12) | (BITS(x, 7, 7) << 11) |
                       (BITS(x, 30, 25) << 5) | (BITS(x, 11, 8) << 1), 13);
         return 1;
@@ -393,17 +481,17 @@ static int decode32(uint32_t x, Insn *d)
     case 0x03: {
         static const uint8_t ops[8] = { OP_LB, OP_LH, OP_LW, OP_LD, OP_LBU, OP_LHU, OP_LWU, 0 };
         if (!ops[f3]) return 0;
-        d->op = ops[f3]; d->imm = sext(x >> 20, 12); return 1;
+        d->op = ops[f3]; d->rs2 = 0; d->imm = sext(x >> 20, 12); return 1;
     }
     case 0x23: {
         static const uint8_t ops[8] = { OP_SB, OP_SH, OP_SW, OP_SD, 0, 0, 0, 0 };
         if (!ops[f3]) return 0;
-        d->op = ops[f3];
+        d->op = ops[f3]; d->rd = 0;
         d->imm = sext((BITS(x, 31, 25) << 5) | BITS(x, 11, 7), 12);
         return 1;
     }
     case 0x13:
-        d->imm = sext(x >> 20, 12);
+        d->imm = sext(x >> 20, 12); d->rs2 = 0;
         switch (f3) {
         case 0: d->op = OP_ADDI; return 1;
         case 2: d->op = OP_SLTI; return 1;
@@ -422,11 +510,11 @@ static int decode32(uint32_t x, Insn *d)
         return 0;
     case 0x1b:
         switch (f3) {
-        case 0: d->op = OP_ADDIW; d->imm = sext(x >> 20, 12); return 1;
-        case 1: if (f7 != 0) return 0; d->op = OP_SLLIW; d->imm = d->rs2; return 1;
+        case 0: d->op = OP_ADDIW; d->rs2 = 0; d->imm = sext(x >> 20, 12); return 1;
+        case 1: if (f7 != 0) return 0; d->op = OP_SLLIW; d->imm = d->rs2; d->rs2 = 0; return 1;
         case 5:
-            if (f7 == 0x00) { d->op = OP_SRLIW; d->imm = d->rs2; return 1; }
-            if (f7 == 0x20) { d->op = OP_SRAIW; d->imm = d->rs2; return 1; }
+            if (f7 == 0x00) { d->op = OP_SRLIW; d->imm = d->rs2; d->rs2 = 0; return 1; }
+            if (f7 == 0x20) { d->op = OP_SRAIW; d->imm = d->rs2; d->rs2 = 0; return 1; }
             return 0;
         }
         return 0;
@@ -644,6 +732,11 @@ enum {
     W_I64_SHL = 0x86, W_I64_SHR_S = 0x87, W_I64_SHR_U = 0x88,
     W_I32_WRAP_I64 = 0xa7, W_I64_EXTEND_I32_S = 0xac, W_I64_EXTEND_I32_U = 0xad,
 };
+enum {
+    W_F64_LOAD = 0x2b, W_I32_LOAD8_U = 0x2d, W_F64_EQ = 0x61, W_F64_LT = 0x63, W_F64_LE = 0x65,
+    W_I64_GT_U = 0x56, W_F64_SQRT = 0x9f, W_F64_ADD = 0xa0, W_F64_SUB = 0xa1, W_F64_MUL = 0xa2,
+    W_F64_DIV = 0xa3, W_I64_REINTERPRET_F64 = 0xbd,
+};
 #define T_I32 0x7f
 #define T_I64 0x7e
 #define T_VOID 0x40
@@ -651,7 +744,7 @@ enum {
 /* function indices: imports first */
 enum { F_LD = 0, F_ST, F_MULH, F_DIV, F_EXEC1, N_IMPORTS };
 /* locals: 0 = state; 1..31 = x1..x31; then temps */
-enum { L_S = 0, L_PC = 32, L_A = 33, L_V = 34, L_E = 35, N_LOCALS_I64 = 34 /* x1..x31, pc, a, v */ };
+enum { L_S = 0, L_PC = 32, L_A = 33, L_V = 34, L_E = 35, L_F = 36 /* regions only */, N_LOCALS_I64 = 34 /* x1..x31, pc, a, v */ };
 
 static void op_(Buf *o, uint8_t op) { put(o, op); }
 static void get(Buf *o, int l) { put(o, W_LOCAL_GET); uleb(o, l); }
@@ -668,6 +761,9 @@ typedef struct {
     Buf *o;
     uint32_t used, dirty;   /* register bitmaps; dirty = every rd in the block */
     int n;                  /* instructions in the block */
+    int region;             /* emitting one entry of a page region (see gen_region) */
+    int dd;                 /* region: br depth from the block's loop body to the dispatch loop */
+    int poff;               /* region: page offset of the block's first instruction */
 } Gen;
 
 #define OFF_PC     ((uint32_t)offsetof(RISCVCPUState, pc))
@@ -676,6 +772,8 @@ typedef struct {
 #define OFF_MIP    ((uint32_t)offsetof(RISCVCPUState, mip))
 #define OFF_FREG(r) ((uint32_t)(offsetof(RISCVCPUState, fp_reg) + 8 * (r)))
 #define OFF_FS     ((uint32_t)offsetof(RISCVCPUState, fs))
+#define OFF_FFLAGS ((uint32_t)offsetof(RISCVCPUState, fflags))
+#define OFF_FRM    ((uint32_t)offsetof(RISCVCPUState, frm))
 #define OFF_MIE    ((uint32_t)offsetof(RISCVCPUState, mie))
 #define OFF_TMP    ((uint32_t)offsetof(RISCVCPUState, xn_tmp))
 #define OFF_TLBR   ((uint32_t)offsetof(RISCVCPUState, tlb_read))
@@ -723,13 +821,42 @@ static void exit_exception(Gen *g, int k, int n)
     i32c(g->o, 1); op_(g->o, W_RETURN);
 }
 
+/* Region edge: registers are already spilled; if pc0 + off stays in this page,
+   continue there through the dispatch (`extra` = labels opened inside the
+   block's loop at this point). Returns 0 when the target is in another page. */
+static int region_edge(Gen *g, int64_t off, int extra)
+{
+    int64_t t = g->poff + off;
+    if (!g->region || t < 0 || t >= 4096)
+        return 0;
+    get(g->o, L_PC); i64c(g->o, off); op_(g->o, W_I64_ADD); set(g->o, L_PC);
+    put(g->o, W_BR); uleb(g->o, g->dd + extra);
+    return 1;
+}
+
 /* leave the block at instruction k with s->pc = pc0 + target_off */
-static void exit_to(Gen *g, int k, int64_t target_off)
+static void exit_to(Gen *g, int k, int64_t target_off, int extra)
 {
     charge(g, k + 1);
     store_dirty(g);
+    if (region_edge(g, target_off, extra))
+        return;
     set_pc_off(g, target_off);
-    i32c(g->o, 0); op_(g->o, W_RETURN);
+    i32c(g->o, 2); op_(g->o, W_RETURN);
+}
+
+/* after a store helper call (result on the stack): 1 = exception, 2 = the
+   store dropped translations, so stop after it (registers are spilled) */
+static void store_result(Gen *g, int k, int64_t next_off)
+{
+    Buf *o = g->o;
+    set(o, L_E);
+    get(o, L_E);
+    put(o, W_IF); put(o, T_VOID);
+      get(o, L_E); i32c(o, 1); op_(o, W_I32_EQ);
+      put(o, W_IF); put(o, T_VOID); exit_exception(g, k, g->n); put(o, W_END);
+      charge(g, k + 1); set_pc_off(g, next_off); i32c(o, 0); op_(o, W_RETURN);
+    put(o, W_END);
 }
 
 /* back edge to the block start at instruction k. `depth` = br depth of the
@@ -745,7 +872,7 @@ static void back_edge(Gen *g, int k, int depth)
     put(o, W_BR_IF); uleb(o, depth);
     store_dirty(g);
     set_pc_off(g, 0);
-    i32c(o, 0); op_(o, W_RETURN);
+    i32c(o, 4); op_(o, W_RETURN);
 }
 
 /* L_A = rs1 + imm; L_E = &tlb[(a >> 12) & (TLB_SIZE-1)] */
@@ -811,7 +938,7 @@ static void gen_store(Gen *g, const Insn *d, int k, int n, int64_t pcoff)
     put(g->o, W_ELSE);
       store_dirty(g); set_pc_off(g, pcoff);
       get(g->o, L_S); get(g->o, L_A); rget(g, d->rs2); i32c(g->o, S[d->op].log2); put(g->o, W_CALL); uleb(g->o, F_ST);
-      put(g->o, W_IF); put(g->o, T_VOID); exit_exception(g, k, n); put(g->o, W_END);
+      store_result(g, k, pcoff + d->len);
     put(g->o, W_END);
 }
 
@@ -874,6 +1001,24 @@ static void gen_alu(Gen *g, const Insn *d)
     rset(g, d->rd);
 }
 
+/* EXEC1 class for the measurement counters (0 = other, see xn_jit_stat) */
+static int exec1_class(uint32_t raw)
+{
+    uint32_t opc = raw & 0x7f, f7 = raw >> 25, f = f7 & ~1u;
+    if ((raw & 3) != 3) return 0;
+    if (opc == 0x53) {
+        if (f == 0x00 || f == 0x04 || f == 0x08 || f == 0x0c || f == 0x2c) return 1;
+        if (f == 0x20 || f == 0x60 || f == 0x68) return 3;
+        if (f == 0x50) return 4;
+        return 5;
+    }
+    if (opc == 0x43 || opc == 0x47 || opc == 0x4b || opc == 0x4f) return 2;
+    if (opc == 0x07 || opc == 0x27) return 6;
+    if (opc == 0x2f) return 7;
+    if (opc == 0x73) return 8;
+    return 0;
+}
+
 /* FP disabled (mstatus.FS == 0): let the interpreter run the instruction
    (it raises illegal-instruction); the block then leaves either way. */
 static void fp_guard(Gen *g, int k, int64_t off, const Insn *d)
@@ -882,7 +1027,7 @@ static void fp_guard(Gen *g, int k, int64_t off, const Insn *d)
     get(o, L_S); mem(o, 0x2d /* i32.load8_u */, 0, OFF_FS); op_(o, W_I32_EQZ);
     put(o, W_IF); put(o, T_VOID);
       store_dirty(g); set_pc_off(g, off);
-      get(o, L_S); i32c(o, d->len | (d->stores << 8)); put(o, W_CALL); uleb(o, F_EXEC1); op_(o, 0x1a);
+      get(o, L_S); i32c(o, d->len | (d->stores << 8) | (exec1_class(d->raw) << 16)); put(o, W_CALL); uleb(o, F_EXEC1); op_(o, 0x1a);
       charge(g, k + 1); i32c(o, 1); op_(o, W_RETURN);
     put(o, W_END);
 }
@@ -890,6 +1035,20 @@ static void fp_guard(Gen *g, int k, int64_t off, const Insn *d)
 static void fp_dirty(Gen *g)
 {
     get(g->o, L_S); i32c(g->o, 3); mem(g->o, 0x3a /* i32.store8 */, 0, OFF_FS);
+}
+
+/* spill, run instruction k on the interpreter, leave if it didn't advance normally */
+static void gen_exec1(Gen *g, const Insn *d, int k, int64_t off)
+{
+    Buf *o = g->o;
+    store_dirty(g);
+    set_pc_off(g, off);
+    get(o, L_S); i32c(o, d->len | (d->stores << 8) | (exec1_class(d->raw) << 16)); put(o, W_CALL); uleb(o, F_EXEC1);
+    put(o, W_IF); put(o, T_VOID);
+      /* pc didn't advance normally (exception, interrupt): state is
+         already in memory, just count and leave */
+      charge(g, k + 1); i32c(o, 1); op_(o, W_RETURN);
+    put(o, W_END);
 }
 
 static void gen_fp(Gen *g, const Insn *d, int k, int64_t off)
@@ -924,7 +1083,7 @@ static void gen_fp(Gen *g, const Insn *d, int k, int64_t off)
           store_dirty(g); set_pc_off(g, off);
           get(o, L_S); get(o, L_A); get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_FREG(d->frs2)); i32c(o, 3);
           put(o, W_CALL); uleb(o, F_ST);
-          put(o, W_IF); put(o, T_VOID); exit_exception(g, k, g->n); put(o, W_END);
+          store_result(g, k, off + d->len);
         put(o, W_END);
         break;
     case OP_FSGNJ_D: {
@@ -952,36 +1111,103 @@ static void gen_fp(Gen *g, const Insn *d, int k, int64_t off)
         get(o, L_S); rget(g, d->rs1); mem(o, W_I64_STORE, 3, OFF_FREG(d->frd));
         fp_dirty(g);
         break;
+    case OP_FARITH_D: {
+        static const uint8_t fop[] = { W_F64_ADD, W_F64_SUB, W_F64_MUL, W_F64_DIV, W_F64_SQRT };
+        /* fast if RNE (static, or dynamic with frm == 0) and NX already set */
+        get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_FFLAGS); i32c(o, 1); op_(o, W_I32_AND);
+        if (d->rm == 7) { get(o, L_S); mem(o, W_I32_LOAD8_U, 0, OFF_FRM); op_(o, W_I32_EQZ); op_(o, W_I32_AND); }
+        put(o, W_IF); put(o, T_I32);
+          get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs1));
+          if (d->sub != 4) { get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs2)); }
+          op_(o, fop[d->sub]); op_(o, W_I64_REINTERPRET_F64); set(o, L_V);
+          /* ok iff DBL_MIN < |r| < inf: excludes NaN, inf, zero, subnormal and tininess-after-rounding */
+          get(o, L_V); i64c(o, INT64_MAX); op_(o, W_I64_AND); i64c(o, 0x0010000000000000LL); op_(o, W_I64_GT_U);
+          get(o, L_V); i64c(o, INT64_MAX); op_(o, W_I64_AND); i64c(o, 0x7ff0000000000000LL); op_(o, W_I64_LT_U);
+          op_(o, W_I32_AND);
+        put(o, W_ELSE);
+          i32c(o, 0);
+        put(o, W_END);
+        put(o, W_IF); put(o, T_VOID);
+          get(o, L_S); get(o, L_V); mem(o, W_I64_STORE, 3, OFF_FREG(d->frd));
+          fp_dirty(g);
+        put(o, W_ELSE);
+          gen_exec1(g, d, k, off);   /* exact softfp path: flags, NaNs, other rounding */
+        put(o, W_END);
+        break;
+    }
+    case OP_FCMP_D: {
+        static const uint8_t cop[] = { W_F64_LE, W_F64_LT, W_F64_EQ };
+        /* no NaN operand: native compare, no flags; otherwise the interpreter (signalling rules) */
+        get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs1)); get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs1)); op_(o, W_F64_EQ);
+        get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs2)); get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs2)); op_(o, W_F64_EQ);
+        op_(o, W_I32_AND);
+        put(o, W_IF); put(o, T_I64);
+          get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs1));
+          get(o, L_S); mem(o, W_F64_LOAD, 3, OFF_FREG(d->frs2));
+          op_(o, cop[d->sub]); op_(o, W_I64_EXTEND_I32_U);
+        put(o, W_ELSE);
+          gen_exec1(g, d, k, off);
+          if (d->rd) { get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_REG(d->rd)); } else i64c(o, 0);
+        put(o, W_END);
+        rset(g, d->rd);
+        break;
+    }
     }
 }
 
 /* Emit the body of one block function. The body sits in a WASM loop so a
    branch back to the block start iterates without leaving the function. */
-static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
+static void gen_masks(Gen *g, const Insn *ins, int n)
 {
-    Gen g = { .o = o, .n = n };
-    int k, r;
-    int64_t off = 0;
-
+    int k;
     for (k = 0; k < n; k++) {
-        g.used |= (1u << ins[k].rd) | (1u << ins[k].rs1) | (1u << ins[k].rs2);
+        g->used |= (1u << ins[k].rd) | (1u << ins[k].rs1) | (1u << ins[k].rs2);
         if (ins[k].op < OP_BEQ || ins[k].op > OP_BGEU) {
             if ((ins[k].op < OP_SB || ins[k].op > OP_SD) && ins[k].op != OP_NOP && ins[k].op != OP_FSD)
-                g.dirty |= 1u << ins[k].rd;
+                g->dirty |= 1u << ins[k].rd;
         }
     }
-    g.used &= ~1u;
-    g.dirty &= ~1u;
+    g->used &= ~1u;
+    g->dirty &= ~1u;
+}
 
+static void gen_locals(Buf *o)
+{
     /* locals: 34 x i64 (x1..x31, pc, a, v), 1 x i32 (e) */
     uleb(o, 2);
     uleb(o, N_LOCALS_I64); put(o, T_I64);
     uleb(o, 1); put(o, T_I32);
+}
 
+static void gen_load_used(Gen *g)
+{
+    int r;
+    for (r = 1; r < 32; r++)
+        if (g->used & (1u << r)) { get(g->o, L_S); mem(g->o, W_I64_LOAD, 3, OFF_REG(r)); set(g->o, r); }
+}
+
+static void gen_body(Gen *g, const Insn *ins, int n, int end_off);
+
+static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
+{
+    Gen g = { .o = o, .n = n };
+    gen_masks(&g, ins, n);
+    gen_locals(o);
     /* entry: load pc and used registers */
     get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_PC); set(o, L_PC);
-    for (r = 1; r < 32; r++)
-        if (g.used & (1u << r)) { get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_REG(r)); set(o, r); }
+    gen_load_used(&g);
+    gen_body(&g, ins, n, end_off);
+    op_(o, W_END);
+}
+
+/* The block's code from its loop on. Single blocks end with the i32 result on
+   the stack; region entries always end in a br or return. */
+static void gen_body(Gen *g0, const Insn *ins, int n, int end_off)
+{
+    Gen g = *g0;
+    Buf *o = g.o;
+    int k;
+    int64_t off = 0;
 
     put(o, 0x03 /* loop */); put(o, T_VOID);
     for (k = 0; k < n; k++) {
@@ -1002,7 +1228,7 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
             if (off + d->imm == 0)
                 back_edge(&g, k, 0);            /* jump to our own start: loop */
             else
-                exit_to(&g, k, off + d->imm);
+                exit_to(&g, k, off + d->imm, 0);
             break;
         case OP_JALR:
             /* target first: rd may equal rs1 */
@@ -1010,8 +1236,16 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
             if (d->rd) { get(o, L_PC); i64c(o, off + d->len); op_(o, W_I64_ADD); rset(&g, d->rd); }
             charge(&g, k + 1);
             store_dirty(&g);
+            if (g.region) {
+                /* same guest page: stay, the dispatch knows whether it's an entry */
+                get(o, L_V); get(o, L_PC); op_(o, W_I64_XOR); i64c(o, 12); op_(o, W_I64_SHR_U); op_(o, W_I64_EQZ);
+                put(o, W_IF); put(o, T_VOID);
+                  get(o, L_V); set(o, L_PC);
+                  put(o, W_BR); uleb(o, g.dd + 1);
+                put(o, W_END);
+            }
             get(o, L_S); get(o, L_V); mem(o, W_I64_STORE, 3, OFF_PC);
-            i32c(o, 0); op_(o, W_RETURN);
+            i32c(o, 3); op_(o, W_RETURN);
             break;
         case OP_BEQ: case OP_BNE: case OP_BLT: case OP_BGE: case OP_BLTU: case OP_BGEU: {
             static const uint8_t cmp[] = { [OP_BEQ] = W_I64_EQ, [OP_BNE] = W_I64_NE, [OP_BLT] = W_I64_LT_S,
@@ -1022,25 +1256,19 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
             if (off + d->imm == 0)
                 back_edge(&g, k, 1);            /* br over the if to the loop */
             else
-                exit_to(&g, k, off + d->imm);
+                exit_to(&g, k, off + d->imm, 1);
             put(o, W_END);
             break;
         }
         case OP_NOP:
             break;
         case OP_FLD: case OP_FSD: case OP_FSGNJ_D: case OP_FMV_X_D: case OP_FMV_D_X:
+        case OP_FARITH_D: case OP_FCMP_D:
             gen_fp(&g, d, k, off);
             break;
         case OP_EXEC1:
             /* spill, run it on the interpreter, reload its integer result */
-            store_dirty(&g);
-            set_pc_off(&g, off);
-            get(o, L_S); i32c(o, d->len | (d->stores << 8)); put(o, W_CALL); uleb(o, F_EXEC1);
-            put(o, W_IF); put(o, T_VOID);
-              /* pc didn't advance normally (exception, interrupt): state is
-                 already in memory, just count and leave */
-              charge(&g, k + 1); i32c(o, 1); op_(o, W_RETURN);
-            put(o, W_END);
+            gen_exec1(&g, d, k, off);
             if (d->rd) { get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_REG(d->rd)); set(o, d->rd); }
             break;
         default:
@@ -1053,8 +1281,91 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
     /* fell off the end (page end, unsupported instruction, or max length) */
     charge(&g, n);
     store_dirty(&g);
+    if (g.region) {
+        g.dd--;   /* we're outside the block's loop now */
+        if (region_edge(&g, end_off, 0))
+            return;
+        set_pc_off(&g, end_off);
+        i32c(o, 0); op_(o, W_RETURN);
+        return;
+    }
     set_pc_off(&g, end_off);
     i32c(o, 0);
+}
+
+/* ------------------------------------------------------------------ */
+/* page regions: every translated block of one guest page in one function.
+   Edges between them branch back to a dispatch on the page offset of pc
+   instead of returning to xn_jit_run. Registers stay per block (each entry
+   loads its own, each edge spills its own), so exits cost what they always did.
+
+     loop $D
+       block $X
+         block $E[m-1] ... block $E[0]
+           br_table (pc & 0xfff) -> entry j = $E[j], else $X
+         end  entry 0 ... end  entry m-1      (each ends in br $D or return)
+       end  $X: s->pc = pc; return 0
+     end */
+static void gen_region(Buf *o, const uint32_t *keys, const uint8_t *lens, int m)
+{
+    static Insn ins[MAX_BLOCK_INSNS];
+    int j, lo = 4096, hi = -1, cnt, i;
+    for (j = 0; j < m; j++) {
+        int p = page_off(keys[j]);
+        if (p < lo) lo = p;
+        if (p > hi) hi = p;
+    }
+    cnt = (hi - lo) / 2 + 1;
+    /* locals as gen_locals, plus L_F (i32): 1 until the first block has run */
+    uleb(o, 2);
+    uleb(o, N_LOCALS_I64); put(o, T_I64);
+    uleb(o, 2); put(o, T_I32);
+    i32c(o, 1); set(o, L_F);
+    get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_PC); set(o, L_PC);
+    put(o, 0x03 /* loop $D */); put(o, T_VOID);
+    put(o, W_BLOCK); put(o, T_VOID);                    /* $X */
+    for (j = 0; j < m; j++) { put(o, W_BLOCK); put(o, T_VOID); }
+    get(o, L_PC); op_(o, W_I32_WRAP_I64); i32c(o, 0xfff); op_(o, W_I32_AND);
+    i32c(o, lo); op_(o, W_I32_SUB); i32c(o, 1); op_(o, W_I32_SHR_U);
+    put(o, 0x0e /* br_table */); uleb(o, cnt);
+    for (i = 0; i < cnt; i++) {
+        int label = m;
+        for (j = 0; j < m; j++)
+            if (page_off(keys[j]) == lo + 2 * i) { label = j; break; }
+        uleb(o, label);
+    }
+    uleb(o, m);
+    for (j = 0; j < m; j++) {
+        Gen g = { .o = o, .region = 1, .poff = page_off(keys[j]) };
+        int n, end_off;
+        put(o, W_END);   /* $E[j]: entry j starts here, inside $E[j+1..m-1], $X, $D */
+        n = decode_block((const uint8_t *)(uintptr_t)keys[j], ins, &end_off);
+        g.n = n;
+        g.dd = (m - j) + 1;   /* from inside the block's own loop */
+        (void)lens;
+        /* the checks xn_jit_run does between blocks: budget for this one, and
+           pending interrupts -- but not before the first block: the interpreter
+           calls us even when an interrupt is pending yet masked, and leaving
+           without running anything would livelock */
+        get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_NCYC); i32c(o, n); op_(o, 0x48 /* i32.lt_s */);
+        get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIP); get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIE); op_(o, W_I32_AND);
+        i32c(o, 0); op_(o, W_I32_NE);
+        get(o, L_F); op_(o, W_I32_EQZ); op_(o, W_I32_AND);
+        op_(o, 0x72 /* i32.or */);
+        put(o, W_IF); put(o, T_VOID);
+          get(o, L_S); get(o, L_PC); mem(o, W_I64_STORE, 3, OFF_PC);
+          i32c(o, 0); op_(o, W_RETURN);
+        put(o, W_END);
+        i32c(o, 0); set(o, L_F);
+        gen_masks(&g, ins, n);
+        gen_load_used(&g);
+        gen_body(&g, ins, n, end_off);
+    }
+    put(o, W_END);   /* $X: not an entry of this region */
+    get(o, L_S); get(o, L_PC); mem(o, W_I64_STORE, 3, OFF_PC);
+    i32c(o, 0); op_(o, W_RETURN);
+    put(o, W_END);   /* $D */
+    op_(o, W_UNREACHABLE);
     op_(o, W_END);
 }
 
@@ -1151,13 +1462,127 @@ static void assemble_module(Buf *mod, Buf *code, int nf)
     free(sec.b);
 }
 
+#define REGION_MAX 128
+#define PEND_MAX   16
+static int regions_on = 1;
+
+/* Regions compile asynchronously (off the VM thread): until one is ready its
+   blocks keep running as single-block functions. */
+EM_JS(void, js_jit_instantiate_async, (const uint8_t *buf, int len, int nfuncs, int token), {
+    const J = Module.xnJit ??= { base: -1, next: -1 };
+    WebAssembly.compile(HEAPU8.slice(buf, buf + len)).then((mod) => {
+        const inst = new WebAssembly.Instance(mod, { e: {
+            m: wasmMemory, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
+            mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'], x1: wasmExports['xn_jit_exec1'],
+        } });
+        if (J.base < 0) { J.base = J.next = wasmTable.length; }
+        if (J.next + nfuncs > wasmTable.length) wasmTable.grow(J.next + nfuncs - wasmTable.length);
+        const first = J.next;
+        for (let i = 0; i < nfuncs; i++) wasmTable.set(first + i, inst.exports['f' + i]);
+        J.next += nfuncs;
+        wasmExports['xn_jit_regions_ready'](token, first);
+    }).catch((e) => {
+        console.error('[xiaonux] jit region module failed', e);
+        wasmExports['xn_jit_regions_ready'](token, -1);
+    });
+});
+
+typedef struct { uint32_t key, gen, seq; int32_t page; uint16_t r; } PendEnt;
+static struct { int token, n, nr; PendEnt *e; } pend[PEND_MAX];
+static int n_pend, next_token = 1;
+
+static void pend_clear(void)
+{
+    int i;
+    for (i = 0; i < n_pend; i++) free(pend[i].e);
+    n_pend = 0;   /* modules still compiling report back with unknown tokens: ignored */
+}
+
+/* A region module finished compiling: point its blocks at it, unless their page
+   changed meanwhile or a newer region for the page is already installed. */
+EMSCRIPTEN_KEEPALIVE void xn_jit_regions_ready(int token, int base)
+{
+    int i, p;
+    for (p = 0; p < n_pend && pend[p].token != token; p++) ;
+    if (p == n_pend) return;
+    if (base >= 0) {
+        st_modules++;
+        st_regions += pend[p].nr;
+        for (i = 0; i < pend[p].n; i++) {
+            PendEnt *e = &pend[p].e[i];
+            Block *b;
+            uint32_t fi = fast_idx(e->key);
+            if (page_gen[e->page] != e->gen || e->seq < page_rinst[e->page]) continue;
+            b = find(e->key, 0);
+            if (!b || b->state != B_READY) continue;
+            page_rinst[e->page] = e->seq;
+            b->fn = base + e->r;
+            if (fast[fi].key == e->key) fast[fi].fn = b->fn;
+            st_region_blocks++;
+        }
+    }
+    free(pend[p].e);
+    pend[p] = pend[--n_pend];
+}
+
+/* (Re)build one region per page touched by this flush, over every READY block
+   of that page -- only once the page has grown enough since its last region,
+   so a warming page isn't recompiled for every new block. */
+static void build_regions(const uint32_t *keys, int nf)
+{
+    static Insn ins[MAX_BLOCK_INSNS];
+    static uint32_t rkeys[BATCH_MAX][REGION_MAX];
+    static int rn[BATCH_MAX], rpage[BATCH_MAX];
+    Buf code = { 0 }, body = { 0 }, mod = { 0 };
+    PendEnt *ents;
+    int i, j, r, nr = 0, ne = 0;
+
+    if (n_pend >= PEND_MAX) return;   /* compiler busy: try again on a later flush */
+    for (i = 0; i < nf; i++) {
+        int page = ram_page_of(keys[i]), e, m = 0, dup = 0, last;
+        if (page < 0) continue;
+        for (r = 0; r < nr; r++) if (rpage[r] == page) dup = 1;
+        if (dup) continue;
+        for (e = page_head[page]; e >= 0 && m < REGION_MAX; e = blocks[e].next_in_page) {
+            int end_off;
+            if (blocks[e].state != B_READY) continue;
+            if (!decode_block((const uint8_t *)(uintptr_t)blocks[e].key, ins, &end_off)) continue;
+            rkeys[nr][m++] = blocks[e].key;
+        }
+        last = page_rn[page];
+        if (m < 2 || (last && m < last + (last / 2 > 4 ? last / 2 : 4))) continue;
+        body.len = 0;
+        gen_region(&body, rkeys[nr], NULL, m);
+        uleb(&code, body.len);
+        put_bytes(&code, body.b, body.len);
+        page_rn[page] = m;
+        rpage[nr] = page; rn[nr] = m; ne += m; nr++;
+    }
+    if (!nr) goto done;
+    ents = malloc(ne * sizeof(PendEnt));
+    for (r = 0, i = 0; r < nr; r++) {
+        uint32_t seq = ++page_rseq[rpage[r]];
+        for (j = 0; j < rn[r]; j++, i++) {
+            ents[i].key = rkeys[r][j]; ents[i].page = rpage[r]; ents[i].r = r;
+            ents[i].gen = page_gen[rpage[r]]; ents[i].seq = seq;
+        }
+    }
+    assemble_module(&mod, &code, nr);
+    pend[n_pend].token = next_token++;
+    pend[n_pend].n = ne; pend[n_pend].nr = nr; pend[n_pend].e = ents;
+    n_pend++;
+    js_jit_instantiate_async(mod.b, mod.len, nr, pend[n_pend - 1].token);   /* copies the bytes */
+ done:
+    free(mod.b); free(code.b); free(body.b);
+}
+
 /* Compile all queued blocks into one module. Called between slices. */
 void xn_jit_flush(void)
 {
     static Insn ins[MAX_BLOCK_INSNS];
     static uint32_t keys[BATCH_MAX];
     static uint16_t lens[BATCH_MAX];
-    Buf mod = { 0 }, sec = { 0 }, code = { 0 }, body = { 0 };
+    Buf mod = { 0 }, code = { 0 }, body = { 0 };
     int i, nf = 0, base;
 
     if (!queue_len)
@@ -1187,42 +1612,6 @@ void xn_jit_flush(void)
         goto done;
 
     assemble_module(&mod, &code, nf);
-    if (0) {
-    put_bytes(&mod, "\0asm\1\0\0\0", 8);
-    /* types: 0 block (i32)->i32, 1 ld (i32,i64,i32)->i32, 2 st (i32,i64,i64,i32)->i32, 3 (i64,i64,i32)->i64 */
-    uleb(&sec, 5);
-    type_fn(&sec, 1, (uint8_t[]){ T_I32 }, 1, T_I32);
-    type_fn(&sec, 3, (uint8_t[]){ T_I32, T_I64, T_I32 }, 1, T_I32);
-    type_fn(&sec, 4, (uint8_t[]){ T_I32, T_I64, T_I64, T_I32 }, 1, T_I32);
-    type_fn(&sec, 3, (uint8_t[]){ T_I64, T_I64, T_I32 }, 1, T_I64);
-    type_fn(&sec, 2, (uint8_t[]){ T_I32, T_I32 }, 1, T_I32);   /* 4: exec1(s, len) */
-    section(&mod, 1, &sec);
-    /* imports */
-    uleb(&sec, 6);
-    put_str(&sec, "e"); put_str(&sec, "m"); put(&sec, 0x02); put(&sec, 0x00); uleb(&sec, 1); /* memory, min 1 */
-    put_str(&sec, "e"); put_str(&sec, "ld"); put(&sec, 0x00); uleb(&sec, 1);
-    put_str(&sec, "e"); put_str(&sec, "st"); put(&sec, 0x00); uleb(&sec, 2);
-    put_str(&sec, "e"); put_str(&sec, "mulh"); put(&sec, 0x00); uleb(&sec, 3);
-    put_str(&sec, "e"); put_str(&sec, "div"); put(&sec, 0x00); uleb(&sec, 3);
-    put_str(&sec, "e"); put_str(&sec, "x1"); put(&sec, 0x00); uleb(&sec, 4);
-    section(&mod, 2, &sec);
-    /* functions */
-    uleb(&sec, nf);
-    for (i = 0; i < nf; i++) uleb(&sec, 0);
-    section(&mod, 3, &sec);
-    /* exports f0..fN */
-    uleb(&sec, nf);
-    for (i = 0; i < nf; i++) {
-        char name[16];
-        snprintf(name, sizeof(name), "f%d", i);
-        put_str(&sec, name); put(&sec, 0x00); uleb(&sec, N_IMPORTS + i);
-    }
-    section(&mod, 7, &sec);
-    /* code */
-    uleb(&sec, nf);
-    put_bytes(&sec, code.b, code.len);
-    section(&mod, 10, &sec);
-    }
 
     base = js_jit_instantiate(mod.b, mod.len, nf, 0);
     if (base < 0) {
@@ -1243,8 +1632,10 @@ void xn_jit_flush(void)
         mark_code_page(keys[i], b);
         st_translated++;
     }
+    if (regions_on)
+        build_regions(keys, nf);
  done:
-    free(mod.b); free(sec.b); free(code.b); free(body.b);
+    free(mod.b); free(code.b); free(body.b);
     if (n_blocks >= MAX_BLOCKS)
         xn_jit_reset();
 }
@@ -1266,8 +1657,9 @@ static uint64_t fnv(const uint8_t *p, int n)
 /* Identifies everything a translation depends on besides the guest bytes. */
 EMSCRIPTEN_KEEPALIVE uint32_t xn_jit_build_id(void)
 {
-    uint32_t v[] = { 4 /* codegen version */, OFF_PC, OFF_REG(0), OFF_NCYC, OFF_TMP, OFF_TLBR, OFF_TLBW,
-                     TLB_ESZ, TLB_SIZE, OFF_MIP, OFF_MIE, OFF_FREG(0), OFF_FS, MAX_BLOCK_INSNS };
+    uint32_t v[] = { 6 /* codegen version */, OFF_PC, OFF_REG(0), OFF_NCYC, OFF_TMP, OFF_TLBR, OFF_TLBW,
+                     TLB_ESZ, TLB_SIZE, OFF_MIP, OFF_MIE, OFF_FREG(0), OFF_FS, MAX_BLOCK_INSNS,
+                     OFF_FFLAGS, OFF_FRM };
     return (uint32_t)fnv((const uint8_t *)v, sizeof(v));
 }
 

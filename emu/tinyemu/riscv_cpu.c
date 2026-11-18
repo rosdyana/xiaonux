@@ -192,6 +192,9 @@ uint64_t xn_stat_walks, xn_stat_priv, xn_stat_exc[32], xn_stat_irq, xn_stat_insn
 #else
 #define XN_STAT(x) ((void)0)
 #endif
+/* JIT measurement counters, read by xn_jit_stat() in jit.c */
+uint64_t xn_exec1_count[9], xn_exec1_nx[9], xn_mulh_count, xn_div_count;
+uint64_t xn_check_count, xn_check_skipped;   /* checker: blocks compared / trusted (MMIO, log full) */
 
 static int get_phys_addr(RISCVCPUState *s,
                          target_ulong *ppaddr, target_ulong vaddr,
@@ -1561,12 +1564,13 @@ EMSCRIPTEN_KEEPALIVE int xn_jit_st(RISCVCPUState *s, uint64_t addr, uint64_t val
             xn_mmio_touched = 1; /* can't undo: don't re-run this one */
         }
     }
+    xn_jit_inval_hit = 0;
     if (target_write_slow(s, addr, val, size_log2)) {
         raise_exception2(s, s->pending_exception, s->pending_tval);
         s->pending_exception = -1;
         return 1;
     }
-    return 0;
+    return xn_jit_inval_hit ? 2 : 0;   /* 2: done, but translated code changed: leave */
 }
 
 static void glue(riscv_cpu_interp_x, 64)(RISCVCPUState *s, int n_cycles1);
@@ -1576,23 +1580,29 @@ static void glue(riscv_cpu_interp_x, 64)(RISCVCPUState *s, int n_cycles1);
    (exception or interrupt taken: the block must leave). */
 EMSCRIPTEN_KEEPALIVE int xn_jit_exec1(RISCVCPUState *s, int arg)
 {
-    int len = arg & 0xff, stores = arg >> 8;
+    int len = arg & 0xff, stores = (arg >> 8) & 0xff, cls = (arg >> 16) & 0xff;
     target_ulong next = s->pc + len;
     int ncyc = s->n_cycles;
     uint64_t icount = s->insn_counter;
     int was_step = xn_step_mode;
+    if (cls > 8) cls = 8;
+    xn_exec1_count[cls]++;
+    if (cls >= 1 && cls <= 6 && (s->fflags & 1)) xn_exec1_nx[cls]++;
     if (xn_log_on && stores)
         xn_mmio_touched = 1; /* the checker can't undo its stores: trust this block */
     xn_step_mode = 1;
+    xn_jit_inval_hit = 0;
     glue(riscv_cpu_interp_x, 64)(s, 1);
     xn_step_mode = was_step;
     s->n_cycles = ncyc;          /* the block does the counting */
     s->insn_counter = icount;
-    return s->pc != next;
+    /* leave also when its store dropped translations (pc is already past it) */
+    return s->pc != next || xn_jit_inval_hit;
 }
 
 EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_mulh(int64_t a, int64_t b, int kind)
 {
+    xn_mulh_count++;
     switch (kind) {
     case 0: return (uint64_t)(((__int128)a * (__int128)b) >> 64);
     case 1: return (uint64_t)(((__int128)a * (__int128)(unsigned __int128)(uint64_t)b) >> 64);
@@ -1604,6 +1614,7 @@ EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_mulh(int64_t a, int64_t b, int kind)
    INT_MIN/-1 = INT_MIN, INT_MIN%-1 = 0. Kinds 4-7 are the 32-bit W forms. */
 EMSCRIPTEN_KEEPALIVE uint64_t xn_jit_div(int64_t a, int64_t b, int kind)
 {
+    xn_div_count++;
     switch (kind) {
     case 0: if (b == 0) return -1; if (a == INT64_MIN && b == -1) return a; return a / b;
     case 1: if (b == 0) return -1; return (uint64_t)a / (uint64_t)b;
@@ -1658,13 +1669,20 @@ void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
     uint64_t icount = s->insn_counter;
 
     xn_cpu_save(s, &before);
-    int rc;
+    int rc, lim = ncyc > 192 ? 192 : ncyc;
     xn_log_on = 1; xn_nlog = 0; xn_mmio_touched = 0;
+    /* a small budget keeps one check to a few chained blocks (regions follow
+       edges inside the call) and well under the 512-entry undo log */
+    s->n_cycles = lim;
     rc = f(s);
     xn_log_on = 0;
-    n = ncyc - s->n_cycles; /* superblocks/loops: what actually ran */
-    if (xn_mmio_touched)
+    n = lim - s->n_cycles; /* superblocks/loops/regions: what actually ran */
+    s->n_cycles = ncyc - n;
+    xn_check_count++;
+    if (xn_mmio_touched) {
+        xn_check_skipped++;
         return; /* device side effects can't be replayed: trust the block */
+    }
     xn_cpu_save(s, &jit);
     /* back to the block's privilege first: undoing user stores from the
        trap handler's S-mode would fail silently */
@@ -1682,7 +1700,7 @@ void xn_check_block(RISCVCPUState *s, xn_block_fn f, uint8_t *code, int n)
 
     if (memcmp(&jit, &interp, sizeof(jit)) != 0 && reports < 20) {
         reports++;
-        fprintf(stderr, "[xn-check] MISMATCH%s block pc=%llx n=%d code=", rc ? "(exc-exit)" : "", (unsigned long long)before.pc, n);
+        fprintf(stderr, "[xn-check] MISMATCH%s block pc=%llx n=%d code=", rc == 1 ? "(exc-exit)" : "", (unsigned long long)before.pc, n);
         for (i = 0; i < 4 * n && i < 256; i++) fprintf(stderr, "%02x", code[i]);
         fprintf(stderr, " | jit pc=%llx interp pc=%llx priv %d/%d scause %llx/%llx", (unsigned long long)jit.pc,
                 (unsigned long long)interp.pc, jit.priv, interp.priv, (unsigned long long)jit.scause,

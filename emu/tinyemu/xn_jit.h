@@ -15,5 +15,6 @@ xn_block_fn xn_jit_lookup(uint8_t *code, int *ninsn);
 void xn_jit_run(struct RISCVCPUState *s, xn_block_fn f);
 void xn_jit_invalidate_host_page(uintptr_t host);
 int xn_jit_page_has_code(uintptr_t host);
+extern int xn_jit_inval_hit;   /* set when a store dropped translations (helpers then end the block) */
 #endif
 #endif

@@ -137,7 +137,17 @@ function tick() {
     const mips = lastStats ? (insns - lastInsns) / ((now - lastStats) * 1000) : 0;
     lastInsns = insns;
     post({ type: 'stats', mips: Math.round(mips), heapMb: Math.round(vm.HEAPU8.length / 2 ** 20), outBytes: outTotal,
-      jit: { blocks: vm._xn_jit_stat(0), modules: vm._xn_jit_stat(1), invalidated: vm._xn_jit_stat(2), resets: vm._xn_jit_stat(3), preloaded: vm._xn_jit_stat(6) } });
+      jit: { blocks: vm._xn_jit_stat(0), modules: vm._xn_jit_stat(1), invalidated: vm._xn_jit_stat(2), resets: vm._xn_jit_stat(3), preloaded: vm._xn_jit_stat(6),
+        exec1: Array.from({length: 9}, (_, i) => vm!._xn_jit_stat(7 + i)),
+        exec1Nx: Array.from({length: 9}, (_, i) => vm!._xn_jit_stat(16 + i)),
+        mulh: vm._xn_jit_stat(25), div: vm._xn_jit_stat(26),
+        trans: Array.from({length: 5}, (_, i) => vm!._xn_jit_stat(27 + i)),
+        transSame: Array.from({length: 5}, (_, i) => vm!._xn_jit_stat(32 + i)),
+        jitInsns: vm!._xn_jit_stat(37),
+        entryHist: Array.from({length: 8}, (_, i) => vm!._xn_jit_stat(38 + i)),
+        stop: Array.from({length: 4}, (_, i) => vm!._xn_jit_stat(46 + i)),
+        runs: vm!._xn_jit_stat(50), regions: vm!._xn_jit_stat(51), regionBlocks: vm!._xn_jit_stat(52), checked: vm!._xn_jit_stat(53), checkSkipped: vm!._xn_jit_stat(54),
+        insns: vm!._vm_insn_count() } });
     if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;
     lastStats = now;
