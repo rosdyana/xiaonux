@@ -146,7 +146,7 @@ function tick() {
         jitInsns: vm!._xn_jit_stat(37),
         entryHist: Array.from({length: 8}, (_, i) => vm!._xn_jit_stat(38 + i)),
         stop: Array.from({length: 4}, (_, i) => vm!._xn_jit_stat(46 + i)),
-        runs: vm!._xn_jit_stat(50), regions: vm!._xn_jit_stat(51), regionBlocks: vm!._xn_jit_stat(52), checked: vm!._xn_jit_stat(53), checkSkipped: vm!._xn_jit_stat(54),
+        runs: vm!._xn_jit_stat(50), regions: vm!._xn_jit_stat(51), regionBlocks: vm!._xn_jit_stat(52), checked: vm!._xn_jit_stat(53), checkSkipped: vm!._xn_jit_stat(54), jdist: Array.from({length: 8}, (_, i) => vm!._xn_jit_stat(55 + i)), xdist: Array.from({length: 8}, (_, i) => vm!._xn_jit_stat(63 + i)), chain: vm!._xn_jit_stat(73), fastHit: vm!._xn_jit_stat(71), fastMiss: vm!._xn_jit_stat(72),
         insns: vm!._vm_insn_count() } });
     if (disk) post({ type: 'disk', stats: { ...disk.stats } });
     cycles = 0;

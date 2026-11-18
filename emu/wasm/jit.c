@@ -68,7 +68,8 @@ static RISCVCPUState *cpu;
 static uint32_t queue[BATCH_MAX];
 static int queue_len;
 static uint16_t counters[1 << COUNTER_BITS];
-static struct { uint32_t key; int32_t fn; int32_t ninsn; } fast[1 << FAST_BITS];
+typedef struct { uint32_t key; int32_t fn; int32_t ninsn; } FastEnt;   /* layout is baked into chain code */
+static FastEnt fast[1 << FAST_BITS];
 
 static inline uint32_t fast_idx(uint32_t key) { return (key >> 1) & ((1 << FAST_BITS) - 1); }
 
@@ -259,6 +260,8 @@ static uint64_t st_jit_insns;       /* guest instructions retired by translated 
 static uint64_t st_entry_hist[8];   /* insns per block call: [0]=1,[1]=2-3,[2]=4-7,[3]=8-15,[4]=16-31,[5]=32-63,[6]=64-127,[7]=128+ */
 static uint64_t st_stop[4];         /* why xn_jit_run returned: 0 budget/interrupt/power, 1 code TLB miss, 2 lookup miss, 3 budget < block len */
 static uint64_t st_runs;            /* xn_jit_run calls (entries from the interpreter) */
+static uint64_t st_fast_hit, st_fast_miss;  /* xn_jit_run's next-block lookups: fast[] hit / slow path */
+static uint64_t st_jdist[8], st_xdist[8];  /* cross-page jalr / direct exits by |page delta|: 1,2-3,4-7,8-15,16-31,32-63,64-255,256+ */
 
 /* Run translated blocks back to back while the next one is translated, the
    budget covers it and no interrupt is pending (the interpreter checks
@@ -289,6 +292,11 @@ void xn_jit_run(RISCVCPUState *s, xn_block_fn f)
         k = (unsigned)rc < 5 ? rc : 1;
         st_trans[k]++;
         if (((s->pc ^ pc0) >> 12) == 0) st_trans_same[k]++;
+        else if (k == 2 || k == 3) {
+            uint64_t dp = (s->pc > pc0 ? s->pc - pc0 : pc0 - s->pc) >> 12;
+            int q = dp < 2 ? 0 : dp < 4 ? 1 : dp < 8 ? 2 : dp < 16 ? 3 : dp < 32 ? 4 : dp < 64 ? 5 : dp < 256 ? 6 : 7;
+            (k == 3 ? st_jdist : st_xdist)[q]++;
+        }
         while (b < 7 && d >= (2 << b)) b++;
         st_entry_hist[b]++;
 #endif
@@ -296,7 +304,18 @@ void xn_jit_run(RISCVCPUState *s, xn_block_fn f)
         pc = s->pc;
         idx = (pc >> PG_SHIFT) & (TLB_SIZE - 1);
         if (s->tlb_code[idx].vaddr != (pc & ~(target_ulong)PG_MASK)) { ST(st_stop[1]++); return; } /* code TLB miss: let the interpreter refill it */
-        f = xn_jit_lookup((uint8_t *)(s->tlb_code[idx].mem_addend + (uintptr_t)pc), &n);
+        {
+            /* fast[] probe inline (the common case); xn_jit_lookup for the rest */
+            uint32_t key = (uint32_t)(s->tlb_code[idx].mem_addend + (uintptr_t)pc), fi = fast_idx(key);
+            if (fast[fi].key == key) {
+                ST(st_fast_hit++);
+                f = (xn_block_fn)(uintptr_t)fast[fi].fn;
+                n = fast[fi].ninsn;
+            } else {
+                ST(st_fast_miss++);
+                f = xn_jit_lookup((uint8_t *)(uintptr_t)key, &n);
+            }
+        }
         if (!f) { ST(st_stop[2]++); return; }
         if (s->n_cycles < n) { ST(st_stop[3]++); return; }
     }
@@ -328,6 +347,7 @@ EMSCRIPTEN_KEEPALIVE void xn_jit_set_check(int on)
 
 extern uint64_t xn_exec1_count[9], xn_exec1_nx[9], xn_mulh_count, xn_div_count; /* riscv_cpu.c */
 extern uint64_t xn_check_count, xn_check_skipped;
+static int chain_enabled(void);
 static uint64_t st_regions, st_region_blocks;   /* page regions built, blocks routed through them */
 
 EMSCRIPTEN_KEEPALIVE double xn_jit_stat(int which)
@@ -354,6 +374,11 @@ EMSCRIPTEN_KEEPALIVE double xn_jit_stat(int which)
         if (which >= 27 && which <= 31) return (double)st_trans[which - 27];
         if (which >= 32 && which <= 36) return (double)st_trans_same[which - 32];
         if (which >= 38 && which <= 45) return (double)st_entry_hist[which - 38];
+        if (which == 73) return (double)chain_enabled();
+        if (which == 71) return (double)st_fast_hit;
+        if (which == 72) return (double)st_fast_miss;
+        if (which >= 55 && which <= 62) return (double)st_jdist[which - 55];
+        if (which >= 63 && which <= 70) return (double)st_xdist[which - 63];
         if (which >= 46 && which <= 49) return (double)st_stop[which - 46];
         return 0;
     }
@@ -744,7 +769,7 @@ enum {
 /* function indices: imports first */
 enum { F_LD = 0, F_ST, F_MULH, F_DIV, F_EXEC1, N_IMPORTS };
 /* locals: 0 = state; 1..31 = x1..x31; then temps */
-enum { L_S = 0, L_PC = 32, L_A = 33, L_V = 34, L_E = 35, L_F = 36 /* regions only */, N_LOCALS_I64 = 34 /* x1..x31, pc, a, v */ };
+enum { L_S = 0, L_PC = 32, L_A = 33, L_V = 34, L_E = 35, L_F = 36 /* regions only */, L_K = 37 /* chain */, N_LOCALS_I64 = 34 /* x1..x31, pc, a, v */ };
 
 static void op_(Buf *o, uint8_t op) { put(o, op); }
 static void get(Buf *o, int l) { put(o, W_LOCAL_GET); uleb(o, l); }
@@ -764,6 +789,7 @@ typedef struct {
     int region;             /* emitting one entry of a page region (see gen_region) */
     int dd;                 /* region: br depth from the block's loop body to the dispatch loop */
     int poff;               /* region: page offset of the block's first instruction */
+    int cd;                 /* br depth from the block's loop body to the chain tail ($C); 0 = no chaining */
 } Gen;
 
 #define OFF_PC     ((uint32_t)offsetof(RISCVCPUState, pc))
@@ -778,6 +804,7 @@ typedef struct {
 #define OFF_TMP    ((uint32_t)offsetof(RISCVCPUState, xn_tmp))
 #define OFF_TLBR   ((uint32_t)offsetof(RISCVCPUState, tlb_read))
 #define OFF_TLBW   ((uint32_t)offsetof(RISCVCPUState, tlb_write))
+#define OFF_TLBC   ((uint32_t)offsetof(RISCVCPUState, tlb_code))
 #define TLB_ESZ    ((uint32_t)sizeof(TLBEntry))
 #define OFF_TLB_VADDR  ((uint32_t)offsetof(TLBEntry, vaddr))
 #define OFF_TLB_ADDEND ((uint32_t)offsetof(TLBEntry, mem_addend))
@@ -834,6 +861,14 @@ static int region_edge(Gen *g, int64_t off, int extra)
     return 1;
 }
 
+/* s->pc = L_V = pc0 + off, then continue at the chain tail ($C at `depth`) */
+static void chain_to(Gen *g, int64_t off, int depth)
+{
+    get(g->o, L_PC); i64c(g->o, off); op_(g->o, W_I64_ADD); set(g->o, L_V);
+    get(g->o, L_S); get(g->o, L_V); mem(g->o, W_I64_STORE, 3, OFF_PC);
+    put(g->o, W_BR); uleb(g->o, depth);
+}
+
 /* leave the block at instruction k with s->pc = pc0 + target_off */
 static void exit_to(Gen *g, int k, int64_t target_off, int extra)
 {
@@ -841,6 +876,7 @@ static void exit_to(Gen *g, int k, int64_t target_off, int extra)
     store_dirty(g);
     if (region_edge(g, target_off, extra))
         return;
+    if (g->cd) { chain_to(g, target_off, g->cd + extra); return; }
     set_pc_off(g, target_off);
     i32c(g->o, 2); op_(g->o, W_RETURN);
 }
@@ -1173,10 +1209,60 @@ static void gen_masks(Gen *g, const Insn *ins, int n)
 
 static void gen_locals(Buf *o)
 {
-    /* locals: 34 x i64 (x1..x31, pc, a, v), 1 x i32 (e) */
+    /* locals: 34 x i64 (x1..x31, pc, a, v), 3 x i32 (e, f, k) */
     uleb(o, 2);
     uleb(o, N_LOCALS_I64); put(o, T_I64);
-    uleb(o, 1); put(o, T_I32);
+    uleb(o, 3); put(o, T_I32);
+}
+
+/* Chaining: on browsers with wasm tail calls, an exit that knows its target
+   pc looks the next block up itself (code TLB, then fast[]) and tail-calls
+   it, instead of returning to xn_jit_run. Same checks as xn_jit_run. */
+EM_JS(int, js_tail_ok, (void), {
+    try { return WebAssembly.validate(new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,127,3,2,1,0,10,6,1,4,0,18,0,11])) ? 1 : 0; }
+    catch (e) { return 0; }
+});
+#ifndef XN_NO_CHAIN
+static int chain_on = -1;   /* -1: not probed yet */
+#endif
+static int chain_enabled(void)
+{
+#ifdef XN_NO_CHAIN
+    return 0;
+#else
+    if (chain_on < 0) chain_on = js_tail_ok();
+    return chain_on;
+#endif
+}
+
+/* The chain tail ($C's continuation): s->pc and L_V hold the target, registers
+   are spilled and the instructions charged. Tail-call the target's function
+   if the code TLB maps its page, fast[] knows it, the budget covers it and no
+   interrupt is pending; otherwise fall out with `code` like a plain exit. */
+static void gen_chain_tail(Buf *o, int code)
+{
+    /* L_E = &s->tlb_code[(pc >> 12) & (TLB_SIZE-1)] */
+    get(o, L_V); i64c(o, 12); op_(o, W_I64_SHR_U); op_(o, W_I32_WRAP_I64);
+    i32c(o, TLB_SIZE - 1); op_(o, W_I32_AND); i32c(o, TLB_ESZ); op_(o, W_I32_MUL);
+    get(o, L_S); op_(o, W_I32_ADD); i32c(o, OFF_TLBC); op_(o, W_I32_ADD); set(o, L_E);
+    get(o, L_E); mem(o, W_I64_LOAD, 3, OFF_TLB_VADDR);
+    get(o, L_V); i64c(o, ~(int64_t)PG_MASK); op_(o, W_I64_AND); op_(o, W_I64_EQ);
+    put(o, W_IF); put(o, T_VOID);
+      /* L_K = host address (the block key); L_E = &fast[fast_idx(key)] */
+      get(o, L_E); mem(o, W_I32_LOAD, 2, OFF_TLB_ADDEND); get(o, L_V); op_(o, W_I32_WRAP_I64); op_(o, W_I32_ADD); tee(o, L_K);
+      i32c(o, 1); op_(o, W_I32_SHR_U); i32c(o, (1 << FAST_BITS) - 1); op_(o, W_I32_AND);
+      i32c(o, (int32_t)sizeof(FastEnt)); op_(o, W_I32_MUL); i32c(o, (int32_t)(uintptr_t)fast); op_(o, W_I32_ADD); set(o, L_E);
+      get(o, L_E); mem(o, W_I32_LOAD, 2, offsetof(FastEnt, key)); get(o, L_K); op_(o, W_I32_EQ);
+      get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_NCYC); get(o, L_E); mem(o, W_I32_LOAD, 2, offsetof(FastEnt, ninsn)); op_(o, 0x4e /* i32.ge_s */);
+      op_(o, W_I32_AND);
+      get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIP); get(o, L_S); mem(o, W_I32_LOAD, 2, OFF_MIE); op_(o, W_I32_AND); op_(o, W_I32_EQZ);
+      op_(o, W_I32_AND);
+      put(o, W_IF); put(o, T_VOID);
+        get(o, L_S); get(o, L_E); mem(o, W_I32_LOAD, 2, offsetof(FastEnt, fn));
+        put(o, 0x13 /* return_call_indirect */); uleb(o, 0 /* type (i32)->i32 */); uleb(o, 0 /* table */);
+      put(o, W_END);
+    put(o, W_END);
+    i32c(o, code);
 }
 
 static void gen_load_used(Gen *g)
@@ -1196,7 +1282,15 @@ static void gen_block(Buf *o, const Insn *ins, int n, int end_off)
     /* entry: load pc and used registers */
     get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_PC); set(o, L_PC);
     gen_load_used(&g);
-    gen_body(&g, ins, n, end_off);
+    if (chain_enabled()) {
+        g.cd = 1;
+        put(o, W_BLOCK); put(o, T_VOID);   /* $C */
+        gen_body(&g, ins, n, end_off);
+        put(o, W_END);
+        gen_chain_tail(o, 3);
+    } else {
+        gen_body(&g, ins, n, end_off);
+    }
     op_(o, W_END);
 }
 
@@ -1245,6 +1339,7 @@ static void gen_body(Gen *g0, const Insn *ins, int n, int end_off)
                 put(o, W_END);
             }
             get(o, L_S); get(o, L_V); mem(o, W_I64_STORE, 3, OFF_PC);
+            if (g.cd) { put(o, W_BR); uleb(o, g.cd); break; }   /* chain tail, L_V = target */
             i32c(o, 3); op_(o, W_RETURN);
             break;
         case OP_BEQ: case OP_BNE: case OP_BLT: case OP_BGE: case OP_BLTU: case OP_BGEU: {
@@ -1285,6 +1380,9 @@ static void gen_body(Gen *g0, const Insn *ins, int n, int end_off)
         g.dd--;   /* we're outside the block's loop now */
         if (region_edge(&g, end_off, 0))
             return;
+    }
+    if (g.cd) { chain_to(&g, end_off, g.cd - 1); return; }   /* $C is one label nearer outside the loop */
+    if (g.region) {
         set_pc_off(&g, end_off);
         i32c(o, 0); op_(o, W_RETURN);
         return;
@@ -1309,19 +1407,17 @@ static void gen_body(Gen *g0, const Insn *ins, int n, int end_off)
 static void gen_region(Buf *o, const uint32_t *keys, const uint8_t *lens, int m)
 {
     static Insn ins[MAX_BLOCK_INSNS];
-    int j, lo = 4096, hi = -1, cnt, i;
+    int j, lo = 4096, hi = -1, cnt, i, chain = chain_enabled();
     for (j = 0; j < m; j++) {
         int p = page_off(keys[j]);
         if (p < lo) lo = p;
         if (p > hi) hi = p;
     }
     cnt = (hi - lo) / 2 + 1;
-    /* locals as gen_locals, plus L_F (i32): 1 until the first block has run */
-    uleb(o, 2);
-    uleb(o, N_LOCALS_I64); put(o, T_I64);
-    uleb(o, 2); put(o, T_I32);
+    gen_locals(o);   /* L_F: 1 until the first block has run */
     i32c(o, 1); set(o, L_F);
     get(o, L_S); mem(o, W_I64_LOAD, 3, OFF_PC); set(o, L_PC);
+    if (chain) { put(o, W_BLOCK); put(o, T_VOID); }   /* $C, around $D */
     put(o, 0x03 /* loop $D */); put(o, T_VOID);
     put(o, W_BLOCK); put(o, T_VOID);                    /* $X */
     for (j = 0; j < m; j++) { put(o, W_BLOCK); put(o, T_VOID); }
@@ -1342,6 +1438,7 @@ static void gen_region(Buf *o, const uint32_t *keys, const uint8_t *lens, int m)
         n = decode_block((const uint8_t *)(uintptr_t)keys[j], ins, &end_off);
         g.n = n;
         g.dd = (m - j) + 1;   /* from inside the block's own loop */
+        g.cd = chain ? g.dd + 1 : 0;
         (void)lens;
         /* the checks xn_jit_run does between blocks: budget for this one, and
            pending interrupts -- but not before the first block: the interpreter
@@ -1363,9 +1460,14 @@ static void gen_region(Buf *o, const uint32_t *keys, const uint8_t *lens, int m)
     }
     put(o, W_END);   /* $X: not an entry of this region */
     get(o, L_S); get(o, L_PC); mem(o, W_I64_STORE, 3, OFF_PC);
-    i32c(o, 0); op_(o, W_RETURN);
+    if (chain) { get(o, L_PC); set(o, L_V); put(o, W_BR); uleb(o, 1); }   /* $D is 0, $C is 1 */
+    else { i32c(o, 0); op_(o, W_RETURN); }
     put(o, W_END);   /* $D */
     op_(o, W_UNREACHABLE);
+    if (chain) {
+        put(o, W_END);   /* $C */
+        gen_chain_tail(o, 3);
+    }
     op_(o, W_END);
 }
 
@@ -1380,7 +1482,7 @@ EM_JS(int, js_jit_instantiate, (const uint8_t *buf, int len, int nfuncs, int per
         const mod = (permanent && Module.xnJitPreModule) || new WebAssembly.Module(HEAPU8.slice(buf, buf + len));
         if (permanent) Module.xnJitPreModule = null;
         inst = new WebAssembly.Instance(mod, { e: {
-            m: wasmMemory, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
+            m: wasmMemory, t: wasmTable, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
             mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'], x1: wasmExports['xn_jit_exec1'],
         } });
     } catch (e) {
@@ -1438,8 +1540,9 @@ static void assemble_module(Buf *mod, Buf *code, int nf)
     type_fn(&sec, 3, (uint8_t[]){ T_I64, T_I64, T_I32 }, 1, T_I64);
     type_fn(&sec, 2, (uint8_t[]){ T_I32, T_I32 }, 1, T_I32);
     section(mod, 1, &sec);
-    uleb(&sec, 6);
+    uleb(&sec, 7);
     put_str(&sec, "e"); put_str(&sec, "m"); put(&sec, 0x02); put(&sec, 0x00); uleb(&sec, 1);
+    put_str(&sec, "e"); put_str(&sec, "t"); put(&sec, 0x01); put(&sec, 0x70 /* funcref */); put(&sec, 0x00); uleb(&sec, 0);
     put_str(&sec, "e"); put_str(&sec, "ld"); put(&sec, 0x00); uleb(&sec, 1);
     put_str(&sec, "e"); put_str(&sec, "st"); put(&sec, 0x00); uleb(&sec, 2);
     put_str(&sec, "e"); put_str(&sec, "mulh"); put(&sec, 0x00); uleb(&sec, 3);
@@ -1472,7 +1575,7 @@ EM_JS(void, js_jit_instantiate_async, (const uint8_t *buf, int len, int nfuncs, 
     const J = Module.xnJit ??= { base: -1, next: -1 };
     WebAssembly.compile(HEAPU8.slice(buf, buf + len)).then((mod) => {
         const inst = new WebAssembly.Instance(mod, { e: {
-            m: wasmMemory, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
+            m: wasmMemory, t: wasmTable, ld: wasmExports['xn_jit_ld'], st: wasmExports['xn_jit_st'],
             mulh: wasmExports['xn_jit_mulh'], div: wasmExports['xn_jit_div'], x1: wasmExports['xn_jit_exec1'],
         } });
         if (J.base < 0) { J.base = J.next = wasmTable.length; }
@@ -1657,9 +1760,9 @@ static uint64_t fnv(const uint8_t *p, int n)
 /* Identifies everything a translation depends on besides the guest bytes. */
 EMSCRIPTEN_KEEPALIVE uint32_t xn_jit_build_id(void)
 {
-    uint32_t v[] = { 6 /* codegen version */, OFF_PC, OFF_REG(0), OFF_NCYC, OFF_TMP, OFF_TLBR, OFF_TLBW,
+    uint32_t v[] = { 7 /* codegen version */, OFF_PC, OFF_REG(0), OFF_NCYC, OFF_TMP, OFF_TLBR, OFF_TLBW,
                      TLB_ESZ, TLB_SIZE, OFF_MIP, OFF_MIE, OFF_FREG(0), OFF_FS, MAX_BLOCK_INSNS,
-                     OFF_FFLAGS, OFF_FRM };
+                     OFF_FFLAGS, OFF_FRM, OFF_TLBC, (uint32_t)sizeof(FastEnt), (uint32_t)(uintptr_t)fast, (uint32_t)chain_enabled() };
     return (uint32_t)fnv((const uint8_t *)v, sizeof(v));
 }
 

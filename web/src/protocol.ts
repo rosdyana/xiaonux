@@ -31,7 +31,7 @@ export type FromWorker =
   | { type: 'restored'; ms: number; agentOk: boolean }
   | { type: 'restart-cold' }
   | { type: 'fetch'; url: string; bytes: number }
-  | { type: 'stats'; mips: number; heapMb: number; outBytes: number; jit?: { blocks: number; modules: number; invalidated: number; resets: number; preloaded?: number; exec1?: number[]; exec1Nx?: number[]; mulh?: number; div?: number; trans?: number[]; transSame?: number[]; jitInsns?: number; entryHist?: number[]; stop?: number[]; runs?: number; insns?: number; regions?: number; regionBlocks?: number; checked?: number; checkSkipped?: number } }
+  | { type: 'stats'; mips: number; heapMb: number; outBytes: number; jit?: { blocks: number; modules: number; invalidated: number; resets: number; preloaded?: number; exec1?: number[]; exec1Nx?: number[]; mulh?: number; div?: number; trans?: number[]; transSame?: number[]; jitInsns?: number; entryHist?: number[]; stop?: number[]; runs?: number; insns?: number; regions?: number; regionBlocks?: number; checked?: number; checkSkipped?: number; jdist?: number[]; xdist?: number[]; chain?: number; fastHit?: number; fastMiss?: number } }
   | { type: 'disk'; stats: DiskStats }
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
