@@ -96,7 +96,10 @@ function memoryOverlay(): Overlay {
 /**
  * Whether an overlay (by its id) holds a user's changes. Reads the files with
  * getFile() and never opens a sync access handle: that would take the lock
- * which detects a second tab. A missing directory or file, or any error, is no.
+ * which detects a second tab. A missing directory or file is no. Any other
+ * error (e.g. another tab holds the files) counts as yes: picking the image
+ * whose files we can't read would hide them, while picking it anyway only
+ * leads to the usual "open in another tab" in-memory disk.
  */
 export async function overlayHasData(id: string): Promise<boolean> {
   try {
@@ -107,8 +110,10 @@ export async function overlayHasData(id: string): Promise<boolean> {
     if (state.size < 4) return false;
     // state[0] is 'valid': set once a machine has been saved with these changes.
     return new Uint32Array(await state.slice(0, 4).arrayBuffer())[0] === 1;
-  } catch {
-    return false;
+  } catch (e) {
+    // No storage at all (e.g. a private window) also lands here: the current
+    // image then "holds data" and is picked, as before this check existed.
+    return (e as DOMException)?.name !== 'NotFoundError';
   }
 }
 
