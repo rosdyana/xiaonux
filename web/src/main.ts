@@ -352,6 +352,8 @@ onLocaleChange(() => statusDraw());
 
 /** Set when this tab's changes won't be kept (the worker's 'disk-mode'); null = they are. */
 let notSaved: Key | null = null;
+/** Set when the user's files are in the previous system version (the worker's 'disk-mode'). */
+let olderVersion: Key | null = null;
 const RESET_REASONS: Record<string, Key> = {
   'other-tab': 'reset.reason.other-tab',
   unavailable: 'reset.reason.unavailable',
@@ -397,6 +399,9 @@ function mark(name: string) {
       if (notSaved) {
         statusEl.append(` · ${t(notSaved)}`);
         statusEl.title = t(notSaved);
+      } else if (olderVersion) {
+        statusEl.append(` · ${t(olderVersion)}`);
+        statusEl.title = t(olderVersion);
       }
     });
     statusEl.dataset.state = notSaved ? 'error' : 'ready';
@@ -482,6 +487,7 @@ async function boot(forceCold = false) {
   marks = {};
   bytesFetched = 0;
   notSaved = null;
+  olderVersion = null;
   setStatus('status.starting');
   statusEl.dataset.state = '';
   worker = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
@@ -576,6 +582,7 @@ function onWorker(m: FromWorker) {
       break;
     case 'disk-mode':
       notSaved = m.persistent ? null : m.reason === 'other-tab' ? 'status.notSaved' : 'status.notSavedNoStorage';
+      olderVersion = m.current ? null : 'status.olderVersion';
       if (notSaved) {
         // Show it now; "Ready in N s" re-applies it (see mark()).
         const key = notSaved;
