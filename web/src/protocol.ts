@@ -36,7 +36,8 @@ export type FromWorker =
   | { type: 'log'; message: string }
   | { type: 'reset-done' }
   | { type: 'reset-failed'; reason: string }
-  | { type: 'disk-mode'; persistent: boolean; reason: 'opfs' | 'other-tab' | 'unavailable' }
+  /** current: false when the user's files live in an older image (boot.json `previous`) */
+  | { type: 'disk-mode'; persistent: boolean; reason: 'opfs' | 'other-tab' | 'unavailable'; current: boolean }
   | { type: 'transfer'; dir: 'up' | 'down'; done: number; total: number }
   | { type: 'upload-done'; name: string; path: string }
   | { type: 'download-done'; path: string; bytes: Uint8Array }

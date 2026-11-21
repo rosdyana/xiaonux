@@ -3,6 +3,7 @@
 // copy-on-write overlay of 4 KB clusters kept in OPFS.
 
 import { SlotAllocator } from './overlay-slots.ts';
+import { overlayId } from './overlay-pick.ts';
 
 const CLUSTER = 4096;
 const CACHE_NAME = 'xiaonux-chunks-v1';
@@ -90,6 +91,25 @@ function memoryOverlay(): Overlay {
     rollbackToSave: () => null,
     save: () => {},
   };
+}
+
+/**
+ * Whether an overlay (by its id) holds a user's changes. Reads the files with
+ * getFile() and never opens a sync access handle: that would take the lock
+ * which detects a second tab. A missing directory or file, or any error, is no.
+ */
+export async function overlayHasData(id: string): Promise<boolean> {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(`overlay-${id}`);
+    if ((await (await dir.getFileHandle('data')).getFile()).size > 0) return true;
+    const state = await (await dir.getFileHandle('state')).getFile();
+    if (state.size < 4) return false;
+    // state[0] is 'valid': set once a machine has been saved with these changes.
+    return new Uint32Array(await state.slice(0, 4).arrayBuffer())[0] === 1;
+  } catch {
+    return false;
+  }
 }
 
 async function opfsOverlay(name: string, nClusters: number): Promise<Overlay> {
@@ -261,8 +281,7 @@ export class ChunkDisk {
     const manifest = (await r.json()) as DiskManifest;
     if (manifest.format !== 'xiaonux-disk-1') throw new Error(`unknown disk format ${manifest.format}`);
     // The overlay belongs to one exact base image.
-    const id = manifestName.replace(/^disk-|\.json$/g, '').slice(0, 16);
-    const d = new ChunkDisk(mod, base, manifest, id, onEvent);
+    const d = new ChunkDisk(mod, base, manifest, overlayId(manifestName), onEvent);
     await d.init();
     return d;
   }
