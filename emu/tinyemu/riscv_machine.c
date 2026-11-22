@@ -42,6 +42,8 @@
 #include "xn_jit.h"
 #include "virtio.h"
 #include "machine.h"
+#include "xn_uart.h" /* xiaonux: xv6-virt profile */
+#include "xn_plic.h" /* xiaonux: xv6-virt profile */
 
 /* RISCV machine */
 
@@ -65,6 +67,11 @@ typedef struct RISCVMachine {
     VIRTIODevice *mouse_dev;
 
     int virtio_count;
+
+    /* xiaonux: xv6-virt profile (see riscv_xv6_machine_init). Appended last. */
+    BOOL xv6;
+    XNPlic *xplic;
+    XNUart *uart;
 } RISCVMachine;
 
 #define LOW_RAM_SIZE   0x00010000 /* 64KB */
@@ -862,10 +869,12 @@ static void copy_bios(RISCVMachine *s, const uint8_t *buf, int buf_len,
     
     fdt_addr = 0x1000 + 8 * 8;
 
-    riscv_build_fdt(s, ram_ptr + fdt_addr,
-                    RAM_BASE_ADDR + kernel_base, kernel_buf_len,
-                    RAM_BASE_ADDR + initrd_base, initrd_buf_len,
-                    cmd_line);
+    /* xiaonux: xv6 never reads the FDT, so the xv6-virt profile skips it */
+    if (!s->xv6)
+        riscv_build_fdt(s, ram_ptr + fdt_addr,
+                        RAM_BASE_ADDR + kernel_base, kernel_buf_len,
+                        RAM_BASE_ADDR + initrd_base, initrd_buf_len,
+                        cmd_line);
 
     /* jump_addr = 0x80000000 */
     
@@ -898,12 +907,76 @@ static void riscv_machine_set_defaults(VirtMachineParams *p)
 {
 }
 
+/* xiaonux: xv6-virt profile. The PLIC output drives the hart's MEIP/SEIP. */
+#define XV6_PLIC_BASE    0x0c000000
+#define XV6_UART_BASE    0x10000000
+#define XV6_UART_IRQ     10
+#define XV6_VIRTIO_BASE  0x10001000
+#define XV6_VIRTIO_IRQ   1
+#define XV6_VIRTIO_VENDOR 0x554d4551 /* "QEMU", as xv6 checks */
+
+static void xv6_plic_out(void *opaque, uint32_t mip_mask, int level)
+{
+    RISCVCPUState *cpu = opaque;
+
+    if (level)
+        riscv_cpu_set_mip(cpu, mip_mask);
+    else
+        riscv_cpu_reset_mip(cpu, mip_mask);
+}
+
+/* xiaonux: RAM and CLINT are already registered by riscv_machine_init. */
+static void riscv_xv6_machine_init(RISCVMachine *s, const VirtMachineParams *p)
+{
+    VIRTIOBusDef vbus_s, *vbus = &vbus_s;
+    int i;
+
+    if (p->eth_count || p->fs_count || p->display_device || p->input_device ||
+        p->drive_count > 1) {
+        vm_error("xv6-virt: only drive0 is supported (no net, 9p, display, "
+                 "input or extra drives)\n");
+        exit(1);
+    }
+    if (!p->files[VM_FILE_BIOS].buf) {
+        vm_error("No bios found");
+    }
+
+    riscv_cpu_set_ext(s->cpu_state, XN_EXT_XV6);
+
+    s->xplic = xn_plic_init(s->mem_map, XV6_PLIC_BASE, xv6_plic_out,
+                            s->cpu_state);
+    for (i = 1; i < 32; i++) {
+        irq_init(&s->plic_irq[i], xn_plic_set_irq, s->xplic, i);
+    }
+
+    s->uart = xn_uart_init(s->mem_map, XV6_UART_BASE,
+                           &s->plic_irq[XV6_UART_IRQ], p->console);
+    /* console_dev stays NULL: the front end never feeds a virtio console */
+    s->common.console = p->console;
+
+    if (p->drive_count > 0) {
+        memset(vbus, 0, sizeof(*vbus));
+        vbus->mem_map = s->mem_map;
+        vbus->addr = XV6_VIRTIO_BASE;
+        vbus->irq = &s->plic_irq[XV6_VIRTIO_IRQ];
+        vbus->vendor_id = XV6_VIRTIO_VENDOR;
+        virtio_block_init(vbus, p->tab_drive[0].block_dev);
+        s->virtio_count++;
+    }
+
+    copy_bios(s, p->files[VM_FILE_BIOS].buf, p->files[VM_FILE_BIOS].len,
+              p->files[VM_FILE_KERNEL].buf, p->files[VM_FILE_KERNEL].len,
+              p->files[VM_FILE_INITRD].buf, p->files[VM_FILE_INITRD].len,
+              p->cmdline);
+}
+
 static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
 {
     RISCVMachine *s;
     VIRTIODevice *blk_dev;
     int irq_num, i, max_xlen, ram_flags;
     VIRTIOBusDef vbus_s, *vbus = &vbus_s;
+    BOOL xv6 = FALSE; /* xiaonux */
 
 
     if (!strcmp(p->machine_name, "riscv32")) {
@@ -912,6 +985,9 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         max_xlen = 64;
     } else if (!strcmp(p->machine_name, "riscv128")) {
         max_xlen = 128;
+    } else if (!strcmp(p->machine_name, "xv6-virt")) { /* xiaonux */
+        max_xlen = 64;
+        xv6 = TRUE;
     } else {
         vm_error("unsupported machine: %s\n", p->machine_name);
         return NULL;
@@ -921,6 +997,7 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     s->common.vmc = p->vmc;
     s->ram_size = p->ram_size;
     s->max_xlen = max_xlen;
+    s->xv6 = xv6; /* xiaonux */
     s->mem_map = phys_mem_map_init();
     /* needed to handle the RAM dirty bits */
     s->mem_map->opaque = s;
@@ -949,6 +1026,11 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     
     cpu_register_device(s->mem_map, CLINT_BASE_ADDR, CLINT_SIZE, s,
                         clint_read, clint_write, DEVIO_SIZE32);
+    /* xiaonux: xv6-virt replaces the whole device block below */
+    if (s->xv6) {
+        riscv_xv6_machine_init(s, p);
+        return (VirtMachine *)s;
+    }
     cpu_register_device(s->mem_map, PLIC_BASE_ADDR, PLIC_SIZE, s,
                         plic_read, plic_write, DEVIO_SIZE32);
     for(i = 1; i < 32; i++) {
@@ -1093,6 +1175,22 @@ static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
                 delay = delay1;
         }
     }
+    /* xiaonux: xv6-virt polls the UART and wakes for the Sstc timer. The
+       front end only polls stdin when console_dev is set, so cap the sleep. */
+    if (m->xv6) {
+        int64_t t;
+        xn_uart_poll(m->uart);
+        t = riscv_cpu_sstc_poll(s);
+        if (t == 0) {
+            delay = 0;
+        } else if (t != INT64_MAX) {
+            delay1 = t / (RTC_FREQ / 1000);
+            if (delay1 < delay)
+                delay = delay1;
+        }
+        if (delay > 10)
+            delay = 10;
+    }
     if (!riscv_cpu_get_power_down(s))
         delay = 0;
     return delay;
@@ -1128,7 +1226,7 @@ static void riscv_vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
 }
 
 const VirtMachineClass riscv_machine_class = {
-    "riscv32,riscv64,riscv128",
+    "riscv32,riscv64,riscv128,xv6-virt", /* xiaonux: xv6-virt added */
     riscv_machine_set_defaults,
     riscv_machine_init,
     riscv_machine_end,
@@ -1218,6 +1316,8 @@ static int riscv_machine_snapshot(RISCVMachine *m, XSnap *sn)
 int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen)
 {
     XSnap sn = { .saving = 1 };
+    if (((RISCVMachine *)s1)->xv6) /* xiaonux: no snapshots for xv6-virt */
+        return -1;
     if (riscv_machine_snapshot((RISCVMachine *)s1, &sn) < 0) {
         free(sn.buf);
         return -1;
@@ -1231,6 +1331,8 @@ int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen)
 int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len)
 {
     XSnap sn = { .saving = 0, .buf = (uint8_t *)buf, .len = len };
+    if (((RISCVMachine *)s1)->xv6) /* xiaonux: no snapshots for xv6-virt */
+        return -1;
     return riscv_machine_snapshot((RISCVMachine *)s1, &sn);
 }
 

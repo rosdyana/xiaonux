@@ -20,7 +20,7 @@ LDFLAGS := -O3 -flto -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=worker \
   --js-library wasm/lib.js
 
 OBJS := wasm/xemu wasm/blk_chunk wasm/jit softfp virtio fs fs_net fs_wget fs_utils simplefb pci json \
-  block_net iomem cutils aes sha256 riscv_cpu riscv_machine machine
+  block_net iomem cutils aes sha256 riscv_cpu riscv_machine machine xn_uart xn_plic
 BROTLI_SRC := $(wildcard brotli/common/*.c brotli/dec/*.c)
 OBJFILES := $(addprefix $(OUT)/obj/,$(addsuffix .o,$(notdir $(OBJS)))) \
   $(addprefix $(OUT)/obj/brotli_,$(notdir $(BROTLI_SRC:.c=.o)))

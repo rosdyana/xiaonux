@@ -239,6 +239,12 @@ struct RISCVCPUState {
     TLBEntry tlb_read[TLB_SIZE];
     TLBEntry tlb_write[TLB_SIZE];
     TLBEntry tlb_code[TLB_SIZE];
+
+    /* xiaonux: xv6-virt profile state (see XN_EXT_XV6 in riscv_cpu.h).
+       Appended last so the translator's field offsets are unchanged. */
+    uint32_t xn_ext;    /* XN_EXT_* bits, 0 for every other machine */
+    uint64_t menvcfg;   /* 0x30A, only stored when XN_EXT_XV6 is set */
+    uint64_t stimecmp;  /* 0x14D (Sstc), only used when XN_EXT_XV6 is set */
 };
 
 #define target_read_slow glue(glue(riscv, MAX_XLEN), _read_slow)

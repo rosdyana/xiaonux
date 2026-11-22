@@ -50,6 +50,7 @@ typedef struct {
     PhysMemoryMap *mem_map;
     uint64_t addr;
     IRQSignal *irq;
+    uint32_t vendor_id; /* xiaonux: 0 = default 0xffff */
 } VIRTIOBusDef;
 
 typedef struct VIRTIODevice VIRTIODevice; 

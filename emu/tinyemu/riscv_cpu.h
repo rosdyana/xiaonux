@@ -55,7 +55,14 @@ typedef struct {
     uint32_t (*riscv_cpu_get_misa)(RISCVCPUState *s);
     void (*riscv_cpu_flush_tlb_write_range_ram)(RISCVCPUState *s,
                                                 uint8_t *ram_ptr, size_t ram_size);
+    /* xiaonux: added last, see riscv_cpu_set_ext / riscv_cpu_sstc_poll */
+    void (*riscv_cpu_set_ext)(RISCVCPUState *s, uint32_t ext);
+    int64_t (*riscv_cpu_sstc_poll)(RISCVCPUState *s);
 } RISCVCPUClass;
+
+/* xiaonux: CPU extension bits for the xv6-virt machine profile. With
+   XN_EXT_XV6 clear, the CPU behaves exactly as it does for Debian. */
+#define XN_EXT_XV6 (1 << 0)
 
 typedef struct {
     const RISCVCPUClass *class_ptr;
@@ -118,6 +125,19 @@ static inline void riscv_cpu_flush_tlb_write_range_ram(RISCVCPUState *s,
 {
     const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
     c->riscv_cpu_flush_tlb_write_range_ram(s, ram_ptr, ram_size);
+}
+/* xiaonux: see XN_EXT_XV6 */
+static inline void riscv_cpu_set_ext(RISCVCPUState *s, uint32_t ext)
+{
+    const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
+    c->riscv_cpu_set_ext(s, ext);
+}
+/* xiaonux: Sstc timer. Returns 0 if STIP was just set, INT64_MAX if the timer
+   is not armed (or not enabled), else the ticks left until stimecmp. */
+static inline int64_t riscv_cpu_sstc_poll(RISCVCPUState *s)
+{
+    const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
+    return c->riscv_cpu_sstc_poll(s);
 }
 
 #endif /* RISCV_CPU_H */

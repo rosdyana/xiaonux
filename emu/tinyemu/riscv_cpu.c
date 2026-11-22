@@ -716,6 +716,31 @@ static void set_mstatus(RISCVCPUState *s, target_ulong val)
     s->mstatus = (s->mstatus & ~mask) | (val & mask);
 }
 
+/* xiaonux: xv6-virt profile only. Sstc (menvcfg.STCE) makes STIP follow
+   stimecmp, which is compared against the CLINT time base. */
+static int xn_sstc_enabled(RISCVCPUState *s)
+{
+    return (s->xn_ext & XN_EXT_XV6) && ((s->menvcfg >> 63) & 1);
+}
+
+/* xiaonux: returns INT64_MAX when the timer is not armed. Otherwise 0 after
+   setting STIP, or the ticks left (STIP cleared). */
+static int64_t sstc_update(RISCVCPUState *s)
+{
+    uint64_t now;
+
+    if (!(s->xn_ext & XN_EXT_XV6) || !((s->menvcfg >> 63) & 1) ||
+        !riscv_cpu_time_hook)
+        return INT64_MAX;
+    now = riscv_cpu_time_hook(riscv_cpu_time_opaque);
+    if (now >= s->stimecmp) {
+        riscv_cpu_set_mip(s, MIP_STIP);
+        return 0;
+    }
+    s->mip &= ~MIP_STIP;
+    return (int64_t)(s->stimecmp - now);
+}
+
 /* return -1 if invalid CSR. 0 if OK. 'will_write' indicate that the
    csr will be written after (used for CSR access check) */
 static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
@@ -727,6 +752,26 @@ static int csr_read(RISCVCPUState *s, target_ulong *pval, uint32_t csr,
         return -1; /* read-only CSR */
     if (s->priv < ((csr >> 8) & 3))
         return -1; /* not enough priviledge */
+    
+    /* xiaonux: xv6-virt profile CSRs, gated so Debian stays unchanged */
+    if (s->xn_ext & XN_EXT_XV6) {
+        if (csr == 0x30A) { /* menvcfg */
+            *pval = s->menvcfg;
+            return 0;
+        }
+        if (csr == 0x14D) { /* stimecmp */
+            if (s->priv == PRV_S && !((s->menvcfg >> 63) & 1)) {
+                *pval = 0;
+                return -1;
+            }
+            *pval = s->stimecmp;
+            return 0;
+        }
+        if ((csr >= 0x3A0 && csr <= 0x3AF) || (csr >= 0x3B0 && csr <= 0x3EF)) {
+            *pval = 0; /* pmpcfg / pmpaddr: no PMP, read as zero */
+            return 0;
+        }
+    }
     
     switch(csr) {
 #if FLEN > 0
@@ -925,6 +970,23 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
     print_target_ulong(val);
     printf("\n");
 #endif
+    /* xiaonux: xv6-virt profile CSRs, gated so Debian stays unchanged */
+    if (s->xn_ext & XN_EXT_XV6) {
+        if (csr == 0x30A) { /* menvcfg: only STCE and ADUE are kept */
+            s->menvcfg = val & (((uint64_t)1 << 63) | ((uint64_t)1 << 61));
+            sstc_update(s);
+            return 1;
+        }
+        if (csr == 0x14D) { /* stimecmp */
+            if (s->priv == PRV_S && !((s->menvcfg >> 63) & 1))
+                return -1;
+            s->stimecmp = val;
+            sstc_update(s);
+            return 1;
+        }
+        if ((csr >= 0x3A0 && csr <= 0x3AF) || (csr >= 0x3B0 && csr <= 0x3EF))
+            return 0; /* pmp: ignored */
+    }
     switch(csr) {
 #if FLEN > 0
     case 0x001: /* fflags */
@@ -968,6 +1030,8 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
         break;
     case 0x144: /* sip */
         mask = s->mideleg;
+        if (xn_sstc_enabled(s)) /* xiaonux: STIP is read-only under Sstc */
+            mask &= ~MIP_STIP;
         s->mip = (s->mip & ~mask) | (val & mask);
         break;
     case 0x180:
@@ -1045,6 +1109,8 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
         break;
     case 0x344:
         mask = MIP_SSIP | MIP_STIP;
+        if (xn_sstc_enabled(s)) /* xiaonux: STIP is read-only under Sstc */
+            mask &= ~MIP_STIP;
         s->mip = (s->mip & ~mask) | (val & mask);
         break;
     default:
@@ -1052,6 +1118,23 @@ static int csr_write(RISCVCPUState *s, uint32_t csr, target_ulong val)
         printf("csr_write: invalid CSR=0x%x\n", csr);
 #endif
         return -1;
+    }
+    /* xiaonux: xv6-virt profile only. Pending interrupts are otherwise
+       checked only at block boundaries, so a short enable window such as
+       xv6's scheduler "intr_on(); intr_off();" would never take them, and
+       its wfi would spin. Leave the loop so the next instruction boundary
+       re-checks, as hardware does. */
+    if ((s->xn_ext & XN_EXT_XV6) && (s->mip & s->mie) != 0) {
+        switch (csr) {
+        case 0x100: /* sstatus */
+        case 0x104: /* sie */
+        case 0x144: /* sip */
+        case 0x300: /* mstatus */
+        case 0x303: /* mideleg */
+        case 0x304: /* mie */
+        case 0x344: /* mip */
+            return 1;
+        }
     }
     return 0;
 }
@@ -1411,6 +1494,17 @@ static uint32_t glue(riscv_cpu_get_misa, MAX_XLEN)(RISCVCPUState *s)
     return s->misa;
 }
 
+/* xiaonux: see XN_EXT_XV6 */
+static void glue(riscv_cpu_set_ext, MAX_XLEN)(RISCVCPUState *s, uint32_t ext)
+{
+    s->xn_ext |= ext;
+}
+
+static int64_t glue(riscv_cpu_sstc_poll, MAX_XLEN)(RISCVCPUState *s)
+{
+    return sstc_update(s);
+}
+
 const RISCVCPUClass glue(riscv_cpu_class, MAX_XLEN) = {
     glue(riscv_cpu_init, MAX_XLEN),
     glue(riscv_cpu_end, MAX_XLEN),
@@ -1422,6 +1516,8 @@ const RISCVCPUClass glue(riscv_cpu_class, MAX_XLEN) = {
     glue(riscv_cpu_get_power_down, MAX_XLEN),
     glue(riscv_cpu_get_misa, MAX_XLEN),
     glue(riscv_cpu_flush_tlb_write_range_ram, MAX_XLEN),
+    glue(riscv_cpu_set_ext, MAX_XLEN), /* xiaonux */
+    glue(riscv_cpu_sstc_poll, MAX_XLEN), /* xiaonux */
 };
 
 #if CONFIG_RISCV_MAX_XLEN == MAX_XLEN
