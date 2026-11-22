@@ -60,6 +60,8 @@ uint64_t riscv_machine_insn_count(VirtMachine *s1);
 
 /* blk_chunk.c */
 BlockDevice *blk_chunk_device(void);
+BlockDevice *blk_mem_device(uint8_t *buf, int64_t len);
+uint8_t *blk_mem_data(int64_t *plen);
 
 static uint8_t console_fifo[4096];
 static int console_fifo_windex;
@@ -275,6 +277,61 @@ EMSCRIPTEN_KEEPALIVE void vm_start(const char *url, int ram_size_mb,
     s->p = mallocz(sizeof(VirtMachineParams));
     virt_machine_set_defaults(s->p);
     virt_machine_load_config_file(s->p, url, init_vm_drive, s);
+}
+
+/*
+ * xiaonux: boot the xv6-virt profile from bytes already in the WASM heap
+ * (the page runner's xv6 worker). Takes ownership of bios and disk, both
+ * malloc'd; they are freed here on every failure path. Not a general loader:
+ * only machine "xv6-virt", no config file, network, agent or snapshots.
+ */
+EMSCRIPTEN_KEEPALIVE int vm_start_mem(const char *machine, uint8_t *bios, int bios_len,
+                                      uint8_t *disk, int disk_len, int ram_mb)
+{
+    VirtMachineParams *p;
+    VirtMachine *m;
+
+    if (!machine || strcmp(machine, "xv6-virt") != 0 || global_vm ||
+        !bios || bios_len <= 0 || disk_len < 0 || ram_mb <= 0) {
+        free(bios);
+        free(disk);
+        return -1;
+    }
+    p = mallocz(sizeof(*p));
+    virt_machine_set_defaults(p);
+    p->machine_name = strdup(machine);
+    p->vmc = &riscv_machine_class;
+    p->ram_size = (uint64_t)ram_mb << 20;
+    p->rtc_real_time = TRUE;
+    /* virt_machine_free_config frees this buffer; RAM is a copy by then. */
+    p->files[VM_FILE_BIOS].buf = bios;
+    p->files[VM_FILE_BIOS].len = bios_len;
+    if (disk_len > 0) {
+        p->drive_count = 1;
+        p->tab_drive[0].block_dev = blk_mem_device(disk, disk_len);
+    } else {
+        free(disk);
+    }
+    p->console = console_init();
+
+    m = virt_machine_init(p);
+    virt_machine_free_config(p);
+    free(p);
+    if (!m)
+        return -1;
+    global_vm = m;
+    vm_on_ready(0);
+    return 0;
+}
+
+/* The disk as it is now (writes included), for JS to save back to fs.img. */
+EMSCRIPTEN_KEEPALIVE uint8_t *vm_mem_disk(int *plen)
+{
+    int64_t len = 0;
+    uint8_t *buf = blk_mem_data(&len);
+    if (plen)
+        *plen = (int)len;
+    return buf;
 }
 
 static void init_vm_drive(void *arg)

@@ -5,7 +5,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
-import type { FromWorker, NetConfig, ToWorker } from './protocol';
+import type { FromWorker, FromXv6Worker, NetConfig, ToWorker, ToXv6Worker } from './protocol';
 import { initGuides, LESSONS, LESSONS_DONE_KEY, lessonProgress } from './ui/guides';
 import { renderHelperFiles } from './ui/helper';
 import { applyDom, mountPickers, onLocaleChange, t, type Key } from './i18n';
@@ -764,4 +764,69 @@ if (TEST_HOOKS) {
     return lines.join('\n');
   };
   (window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = type;
+
+  // xv6 page runner (bench/xv6-browser.mjs). The worker exists only after
+  // start() is called; the page itself never starts it.
+  let xv6: Worker | null = null;
+  let xv6Text = '';
+  let xv6Ready: number | null = null;
+  let xv6Mips = 0;
+  let xv6Stopped: ((fs: Uint8Array) => void) | null = null;
+  const xv6Utf8 = new TextDecoder();
+  const b64Bytes = (b64: string): ArrayBuffer => {
+    const s = atob(b64);
+    const u = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+    return u.buffer;
+  };
+  (window as unknown as { xiaonuxXv6: unknown }).xiaonuxXv6 = {
+    start(kernelB64: string, fsB64: string, jit = true): void {
+      if (xv6) throw new Error('xv6 already running');
+      xv6Text = '';
+      xv6Ready = null;
+      xv6Mips = 0;
+      const kernel = b64Bytes(kernelB64);
+      const fs = b64Bytes(fsB64);
+      const w = new Worker(new URL('./xv6.worker.ts', import.meta.url), { type: 'module' });
+      xv6 = w;
+      w.onmessage = (e: MessageEvent<FromXv6Worker>) => {
+        const m = e.data;
+        if (m.type === 'console') xv6Text += xv6Utf8.decode(m.data, { stream: true });
+        else if (m.type === 'ready') xv6Ready = m.ms;
+        else if (m.type === 'stats') xv6Mips = m.mips;
+        else if (m.type === 'stopped') {
+          if (xv6 === w) xv6 = null;
+          xv6Stopped?.(new Uint8Array(m.fs));
+          xv6Stopped = null;
+        } else if (m.type === 'error') xv6Text += `\n[xv6 error] ${m.message}\n`;
+      };
+      w.onerror = (e) => { xv6Text += `\n[xv6 worker] ${e.message}\n`; };
+      const base = new URL('.', new URL(BOOT_URL, location.href)).href;
+      const msg: ToXv6Worker = { type: 'start', base, kernel, fs, jit };
+      w.postMessage(msg, [kernel, fs]);
+    },
+    type(s: string): void {
+      if (!xv6) throw new Error('xv6 not running');
+      const msg: ToXv6Worker = { type: 'input', data: s };
+      xv6.postMessage(msg);
+    },
+    screen(): string {
+      return xv6Text;
+    },
+    ready(): number | null {
+      return xv6Ready;
+    },
+    mips(): number {
+      return xv6Mips;
+    },
+    stop(): Promise<Uint8Array> {
+      const w = xv6;
+      if (!w) return Promise.reject(new Error('xv6 not running'));
+      return new Promise((resolve) => {
+        xv6Stopped = resolve;
+        const msg: ToXv6Worker = { type: 'stop' };
+        w.postMessage(msg);
+      });
+    },
+  };
 }

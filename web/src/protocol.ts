@@ -47,3 +47,18 @@ export type FromWorker =
   | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }
   | { type: 'error'; message: string };
+
+// Messages between the page's xv6 test hook and its worker (xv6.worker.ts).
+// Only the test hook creates that worker; the Debian VM never uses these.
+
+export type ToXv6Worker =
+  | { type: 'start'; base: string; kernel: ArrayBuffer; fs: ArrayBuffer; jit?: boolean }
+  | { type: 'input'; data: string }
+  | { type: 'stop' };
+
+export type FromXv6Worker =
+  | { type: 'ready'; ms: number }
+  | { type: 'console'; data: Uint8Array }
+  | { type: 'stats'; mips: number }
+  | { type: 'stopped'; fs: ArrayBuffer }
+  | { type: 'error'; message: string };
