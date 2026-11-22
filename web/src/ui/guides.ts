@@ -6,12 +6,13 @@ import permissions from '../lessons/permissions.json';
 import processes from '../lessons/processes.json';
 import python from '../lessons/python.json';
 import triage from '../lessons/triage.json';
+import xv6 from '../lessons/xv6.json';
 import { lessonText, onLocaleChange, t } from '../i18n';
 
 interface Step { text: string; cmd?: string }
 interface Lesson { id: string; title: string; intro: string; steps: Step[] }
 
-export const LESSONS: Lesson[] = [unixBasics, permissions, processes, python, triage];
+export const LESSONS: Lesson[] = [unixBasics, permissions, processes, python, triage, xv6];
 export const LESSONS_DONE_KEY = 'xiaonux.lessons.done';
 const DONE_KEY = LESSONS_DONE_KEY;
 const CHECK = '<svg class="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5l5 5.5L20 5"/></svg>';

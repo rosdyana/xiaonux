@@ -28,6 +28,8 @@ const strings = {
   'card.python.desc': 'Python 3 with pip. numpy, pandas and more install without internet.',
   'card.triage.title': 'Security lab',
   'card.triage.desc': 'Upload a file and take it apart with <code>file</code>, <code>strings</code>, <code>yara</code> and <code>strace</code>.', // (html)
+  'card.xv6.title': 'OS course: xv6',
+  'card.xv6.desc': 'Boot the MIT 6.1810 teaching kernel, run the lab grader and step through it with <code>gdb</code>.', // (html)
   'card.try': 'Try it',
   'card.continue': 'Continue',
   'card.progress': '{done} of {total} steps done',

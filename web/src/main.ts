@@ -465,7 +465,7 @@ function mark(name: string) {
   if (TEST_HOOKS) (window as unknown as { xiaonux: unknown }).xiaonux = { marks, bytesFetched };
 }
 
-const PROMPT = /(?:[#$]|>>>) ?$/;
+const PROMPT = /(?:[#$]|>>>|\(gdb\)) ?$/;
 function watchPrompts(bytes: Uint8Array) {
   tail = (tail + decoder.decode(bytes, { stream: true })).slice(-200);
   if (/login: ?$/.test(tail)) mark('login');

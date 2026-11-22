@@ -1,0 +1,22 @@
+{
+  "id": "xv6",
+  "title": "OS course: xv6",
+  "intro": "xv6 is the small teaching Unix used in MIT 6.1810. The 2026 labs are cloned in ~/xv6-labs-2026 and run here with the course's own Makefile and grader. If that folder is missing you're on the previous system version: press Reset first.",
+  "steps": [
+    { "text": "Go to the lab. It starts on branch <code>util</code>, the first lab.", "cmd": "cd ~/xv6-labs-2026 && git status -sb | head -1" },
+    { "text": "Build and boot xv6. It takes about 10 seconds, then xv6's own shell shows a <code>$</code> prompt.", "cmd": "make qemu" },
+    { "text": "You're in xv6 now, not Debian. List its files: every user program is one file.", "cmd": "ls" },
+    { "text": "Pipes work as in Unix.", "cmd": "echo hello from xv6 | wc" },
+    { "text": "Press <kbd>Ctrl</kbd>+<kbd>A</kbd>, then <kbd>x</kbd>, to stop xv6 and return to Debian. Then tick this step." },
+    { "text": "A user program is a C file in <code>user/</code>. Read <code>echo.c</code>: your first exercise, <code>sleep</code>, looks much like it.", "cmd": "cat user/echo.c" },
+    { "text": "New programs are added to <code>UPROGS</code> in the Makefile. Write <code>user/sleep.c</code> with <code>nano</code>, then add <code>$U/_sleep</code> here.", "cmd": "grep -n '_echo' Makefile" },
+    { "text": "Run the grader for one test. It fails until <code>sleep</code> works, and tells you why.", "cmd": "./grade-lab-util sleep" },
+    { "text": "Debug the kernel. Start xv6 waiting for a debugger, in the background, with its console going to a log file.", "cmd": "make qemu-gdb > qgdb.log 2>&1 &" },
+    { "text": "Attach gdb and stop at the kernel's <code>main</code>.", "cmd": "gdb -q -nx -ex 'set confirm off' -ex 'set architecture riscv:rv64' -ex \"target remote 127.0.0.1:$(make -s print-gdbport)\" -ex 'symbol-file kernel/kernel' -ex 'break main' -ex continue" },
+    { "text": "Where are we? Show the call stack.", "cmd": "bt" },
+    { "text": "Step over a few lines of <code>main</code>.", "cmd": "next 3" },
+    { "text": "Stop xv6 and leave gdb.", "cmd": "kill" },
+    { "text": "Quit gdb.", "cmd": "quit" },
+    { "text": "Other labs are branches: <code>syscall</code>, <code>pgtbl</code>, <code>traps</code>, <code>cow</code>, <code>mmap</code>. Commit your work before you switch. More help: <code>cat ~/xv6-README.txt</code>.", "cmd": "git branch -a" }
+  ]
+}
