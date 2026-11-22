@@ -44,6 +44,7 @@
 #include "machine.h"
 #include "xn_uart.h" /* xiaonux: xv6-virt profile */
 #include "xn_plic.h" /* xiaonux: xv6-virt profile */
+#include "xn_gdb.h"  /* xiaonux: gdb stub (xv6-virt profile) */
 
 /* RISCV machine */
 
@@ -72,6 +73,9 @@ typedef struct RISCVMachine {
     BOOL xv6;
     XNPlic *xplic;
     XNUart *uart;
+    /* gdb stub (see riscv_machine_gdb_attach). Appended last. */
+    XNGdb *gdb;
+    int gdb_skip_bp;   /* the next instruction ignores a breakpoint (after a resume) */
 } RISCVMachine;
 
 #define LOW_RAM_SIZE   0x00010000 /* 64KB */
@@ -1155,6 +1159,30 @@ static void riscv_machine_end(VirtMachine *s1)
     free(s);
 }
 
+/* xiaonux: gdb stub. Registers and memory go through the CPU debug
+   accessors (RAM only, no device side effects). */
+static int gdb_reg_rw(void *t, int regno, uint64_t *val, int write)
+{
+    RISCVMachine *m = t;
+    return riscv_cpu_debug_reg(m->cpu_state, regno, val, write);
+}
+
+static int gdb_mem_rw(void *t, uint64_t addr, uint8_t *buf, int len, int write)
+{
+    RISCVMachine *m = t;
+    return riscv_cpu_debug_mem(m->cpu_state, addr, buf, len, write);
+}
+
+static void gdb_on_resume(void *t)
+{
+    RISCVMachine *m = t;
+    m->gdb_skip_bp = 1;
+}
+
+static const XNGdbTarget gdb_target_ops = {
+    gdb_reg_rw, gdb_mem_rw, gdb_on_resume
+};
+
 /* in ms */
 static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
 {
@@ -1191,15 +1219,106 @@ static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
         if (delay > 10)
             delay = 10;
     }
+    /* xiaonux: halted under the gdb stub. No guest time passes, so poll for
+       debugger input (virt_machine_run selects on the gdb socket too). */
+    if (m->gdb && xn_gdb_halted(m->gdb))
+        return 10;
     if (!riscv_cpu_get_power_down(s))
         delay = 0;
     return delay;
 }
 
+/* xiaonux: one slice with the gdb stub attached. Breakpoints and stepping
+   run one instruction per riscv_cpu_interp(cpu, 1) call with xn_step_mode
+   set (the JIT is bypassed in that mode). Otherwise the normal slice runs. */
+static void gdb_interp(RISCVMachine *m, int max_exec_cycle)
+{
+    RISCVCPUState *cpu = m->cpu_state;
+    XNGdb *g = m->gdb;
+    int stepping, n;
+
+    if (xn_gdb_killed(g)) {
+#ifndef EMSCRIPTEN
+        exit(0);   /* native: `k` ends temu */
+#else
+        return;    /* wasm: the front end sees vm_gdb_killed() */
+#endif
+    }
+    xn_step_mode = 0;
+    if (xn_gdb_halted(g))
+        return;
+    stepping = xn_gdb_stepping(g);
+    if (!stepping && !xn_gdb_has_breakpoints(g)) {
+        m->gdb_skip_bp = 0;
+        riscv_cpu_interp(cpu, max_exec_cycle);
+        return;
+    }
+    xn_step_mode = 1;
+    for (n = 0; n < max_exec_cycle; n++) {
+        uint64_t pc;
+        riscv_cpu_debug_reg(cpu, 32, &pc, 0);
+        if (m->gdb_skip_bp) {
+            m->gdb_skip_bp = 0;
+        } else if (xn_gdb_breakpoint_at(g, pc)) {
+            xn_step_mode = 0;
+            xn_gdb_stop(g, 5);
+            return;
+        }
+        riscv_cpu_interp(cpu, 1);
+        if (stepping) {
+            xn_step_mode = 0;
+            xn_gdb_stop(g, 5);
+            return;
+        }
+        if (riscv_cpu_get_power_down(cpu))
+            break;   /* wfi: let the sleep logic run */
+    }
+    xn_step_mode = 0;
+}
+
 static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)
 {
     RISCVMachine *s = (RISCVMachine *)s1;
+    if (s->gdb) {
+        gdb_interp(s, max_exec_cycle);
+        return;
+    }
     riscv_cpu_interp(s->cpu_state, max_exec_cycle);
+}
+
+/* xiaonux: attaches the gdb stub. xv6-virt only: returns -1 for other
+   machines (and on allocation failure), 0 once attached. out receives the
+   reply bytes; start_halted leaves the machine halted until the client
+   sends c or s. */
+int riscv_machine_gdb_attach(VirtMachine *s1, int start_halted,
+                             void (*out)(void *o, const uint8_t *buf, int len),
+                             void *o)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (!m->xv6 || m->gdb)
+        return -1;
+    m->gdb = xn_gdb_new(&gdb_target_ops, m, out, o);
+    if (!m->gdb)
+        return -1;
+    if (start_halted)
+        xn_gdb_halt_initial(m->gdb);
+    return 0;
+}
+
+/* xiaonux: bytes from the gdb client (no-op when not attached). */
+void riscv_machine_gdb_input(VirtMachine *s1, const uint8_t *buf, int len)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+    if (m->gdb)
+        xn_gdb_input(m->gdb, buf, len);
+}
+
+/* xiaonux: 1 after the client sent `k`. */
+int riscv_machine_gdb_killed(VirtMachine *s1)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+    return m->gdb ? xn_gdb_killed(m->gdb) : 0;
 }
 
 static void riscv_vm_send_key_event(VirtMachine *s1, BOOL is_down,

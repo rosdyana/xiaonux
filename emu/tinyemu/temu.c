@@ -43,6 +43,11 @@
 #endif
 #include <sys/stat.h>
 #include <signal.h>
+#ifndef _WIN32
+#include <sys/socket.h> /* xiaonux: gdb stub */
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
 
 #include "cutils.h"
 #include "iomem.h"
@@ -534,6 +539,137 @@ static EthernetDevice *slirp_open(void)
 
 #endif /* CONFIG_SLIRP */
 
+/*******************************************************/
+/* xiaonux: gdb remote stub over TCP (xv6-virt only).
+   XIAONUX_GDB_PORT=<n> listens on 127.0.0.1:<n> and accepts one client.
+   XIAONUX_GDB_WAIT=1 starts the guest halted until the client sends c or s.
+   `k` exits temu. Client EOF detaches: breakpoints are cleared and the guest
+   resumes, as QEMU does. */
+
+void riscv_machine_gdb_input(VirtMachine *s1, const uint8_t *buf, int len);
+int riscv_machine_gdb_attach(VirtMachine *s1, int start_halted,
+                             void (*out)(void *o, const uint8_t *buf, int len),
+                             void *o);
+
+#ifdef MSG_NOSIGNAL
+#define XN_GDB_SEND_FLAGS MSG_NOSIGNAL /* no SIGPIPE on a closed client */
+#else
+#define XN_GDB_SEND_FLAGS 0            /* macOS: SO_NOSIGPIPE on the socket */
+#endif
+
+static VirtMachine *xn_gdb_vm;
+static int xn_gdb_listen_fd = -1;
+static int xn_gdb_client_fd = -1;
+static int xn_gdb_detach_pending;
+
+static void xn_gdb_drop_client(void)
+{
+    if (xn_gdb_client_fd >= 0)
+        close(xn_gdb_client_fd);
+    xn_gdb_client_fd = -1;
+    xn_gdb_detach_pending = 1;
+}
+
+static void xn_gdb_out(void *o, const uint8_t *buf, int len)
+{
+    (void)o;
+    while (len > 0 && xn_gdb_client_fd >= 0) {
+        ssize_t r = send(xn_gdb_client_fd, buf, len, XN_GDB_SEND_FLAGS);
+        if (r < 0) {
+            if (errno == EINTR)
+                continue;
+            xn_gdb_drop_client();
+            return;
+        }
+        buf += r;
+        len -= (int)r;
+    }
+}
+
+static void xn_gdb_setup(VirtMachine *m)
+{
+    const char *env = getenv("XIAONUX_GDB_PORT");
+    struct sockaddr_in sa;
+    char *end;
+    long port;
+    int fd, one = 1;
+
+    if (!env)
+        return;
+    port = strtol(env, &end, 10);
+    if (*end != '\0' || port <= 0 || port > 65535) {
+        fprintf(stderr, "[xiaonux] bad XIAONUX_GDB_PORT: %s\n", env);
+        exit(1);
+    }
+    if (riscv_machine_gdb_attach(m, getenv("XIAONUX_GDB_WAIT") != NULL,
+                                 xn_gdb_out, NULL) < 0) {
+        fprintf(stderr, "[xiaonux] the gdb stub needs the xv6-virt machine\n");
+        exit(1);
+    }
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("gdb socket");
+        exit(1);
+    }
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons((uint16_t)port);
+    sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0 || listen(fd, 1) < 0) {
+        perror("gdb listen");
+        exit(1);
+    }
+    xn_gdb_listen_fd = fd;
+    xn_gdb_vm = m;
+    fprintf(stderr, "[xiaonux] gdb stub listening on 127.0.0.1:%ld\n", port);
+}
+
+static void xn_gdb_add_fds(int *pfd_max, fd_set *rfds)
+{
+    if (xn_gdb_listen_fd >= 0) {
+        FD_SET(xn_gdb_listen_fd, rfds);
+        if (xn_gdb_listen_fd > *pfd_max)
+            *pfd_max = xn_gdb_listen_fd;
+    }
+    if (xn_gdb_client_fd >= 0) {
+        FD_SET(xn_gdb_client_fd, rfds);
+        if (xn_gdb_client_fd > *pfd_max)
+            *pfd_max = xn_gdb_client_fd;
+    }
+}
+
+static void xn_gdb_handle_ready(fd_set *rfds)
+{
+    if (xn_gdb_listen_fd >= 0 && FD_ISSET(xn_gdb_listen_fd, rfds)) {
+        int fd = accept(xn_gdb_listen_fd, NULL, NULL);
+        if (fd >= 0) {
+#ifdef SO_NOSIGPIPE
+            int one = 1;
+            setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
+            xn_gdb_client_fd = fd;
+        }
+        /* one client only: stop listening */
+        close(xn_gdb_listen_fd);
+        xn_gdb_listen_fd = -1;
+    }
+    if (xn_gdb_client_fd >= 0 && FD_ISSET(xn_gdb_client_fd, rfds)) {
+        uint8_t buf[4096];
+        ssize_t n = read(xn_gdb_client_fd, buf, sizeof(buf));
+        if (n > 0) {
+            riscv_machine_gdb_input(xn_gdb_vm, buf, (int)n);
+        } else if (n == 0 || (errno != EINTR && errno != EAGAIN)) {
+            xn_gdb_drop_client();   /* EOF: detach */
+        }
+    }
+    if (xn_gdb_detach_pending) {
+        /* same as the client sending D: clears breakpoints, resumes */
+        xn_gdb_detach_pending = 0;
+        riscv_machine_gdb_input(xn_gdb_vm, (const uint8_t *)"$D#44", 5);
+    }
+}
+
 #define MAX_EXEC_CYCLE 500000
 #define MAX_SLEEP_TIME 10 /* in ms */
 
@@ -574,12 +710,19 @@ void virt_machine_run(VirtMachine *m)
 #ifdef CONFIG_FS_NET
     fs_net_set_fdset(&fd_max, &rfds, &wfds, &efds, &delay);
 #endif
+#ifndef _WIN32
+    xn_gdb_add_fds(&fd_max, &rfds); /* xiaonux: gdb stub */
+#endif
     tv.tv_sec = delay / 1000;
     tv.tv_usec = (delay % 1000) * 1000;
     ret = select(fd_max + 1, &rfds, &wfds, &efds, &tv);
     if (m->net) {
         m->net->select_poll(m->net, &rfds, &wfds, &efds, ret);
     }
+#ifndef _WIN32
+    if (ret > 0 && xn_gdb_vm) /* xiaonux: gdb stub */
+        xn_gdb_handle_ready(&rfds);
+#endif
     if (ret > 0) {
 #ifndef _WIN32
         if (m->console_dev && FD_ISSET(stdin_fd, &rfds)) {
@@ -901,6 +1044,7 @@ int main(int argc, char **argv)
     
     xn_snapshot_restore_from_env(s);
 #ifndef _WIN32
+    xn_gdb_setup(s); /* xiaonux: gdb stub, if XIAONUX_GDB_PORT is set */
     signal(SIGUSR1, xn_on_sigusr1);
 #endif
     for(;;) {

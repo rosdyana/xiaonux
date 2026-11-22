@@ -1337,9 +1337,14 @@ static inline uint32_t get_field1(uint32_t val, int src_pos,
 }
 
 #define XLEN 32
+/* xiaonux: also used by the gdb stub. Defined in every build (the
+   interpreter checks it under XLEN == 64): the interpreter refetches after
+   every instruction, so riscv_cpu_interp(s, 1) retires exactly one. */
+#if MAX_XLEN == 64
+int xn_step_mode;
+#endif
 #if defined(XN_JIT) && MAX_XLEN == 64
 /* xiaonux lockstep checker (debug): see xn_check_block() */
-int xn_step_mode;   /* interpreter refetches after every instruction */
 int xn_check_mode;  /* run translated blocks in lockstep with the interpreter */
 static int xn_log_on, xn_nlog, xn_mmio_touched;
 static struct { uint64_t addr, old; int log2; } xn_log[512];
@@ -1505,6 +1510,191 @@ static int64_t glue(riscv_cpu_sstc_poll, MAX_XLEN)(RISCVCPUState *s)
     return sstc_update(s);
 }
 
+/* xiaonux: gdb stub register access. Raw state: reads do not check fs, and
+   writes to FP state set fs = 3 as the CSR writes do. */
+static int glue(riscv_cpu_debug_reg, MAX_XLEN)(RISCVCPUState *s, int regno,
+                                               uint64_t *val, int write)
+{
+    if (regno < 0)
+        return -1;
+    if (regno < 32) {
+        if (write) {
+            if (regno != 0)   /* x0 is hardwired to zero */
+                s->reg[regno] = *val;
+        } else {
+            *val = s->reg[regno];
+        }
+        return 0;
+    }
+    if (regno == 32) {
+        if (write)
+            s->pc = *val;
+        else
+            *val = s->pc;
+        return 0;
+    }
+#if FLEN > 0
+    if (regno <= 64) {
+        if (write) {
+            s->fp_reg[regno - 33] = *val;
+            s->fs = 3;
+        } else {
+            *val = s->fp_reg[regno - 33];
+        }
+        return 0;
+    }
+    if (regno <= 67) {
+        if (write) {
+            if (regno == 65) {
+                s->fflags = *val & 0x1f;
+            } else if (regno == 66) {
+                set_frm(s, *val & 7);
+            } else {
+                set_frm(s, (*val >> 5) & 7);
+                s->fflags = *val & 0x1f;
+            }
+            s->fs = 3;
+        } else if (regno == 65) {
+            *val = s->fflags;
+        } else if (regno == 66) {
+            *val = s->frm;
+        } else {
+            *val = s->fflags | (s->frm << 5);
+        }
+        return 0;
+    }
+#endif
+    return -1;
+}
+
+/* xiaonux: physical read for the debugger; -1 unless the address is RAM. */
+static int glue(debug_pte_read, MAX_XLEN)(RISCVCPUState *s, target_ulong addr,
+                                          uint64_t *pval, int size_log2)
+{
+    PhysMemoryRange *pr = get_phys_mem_range(s->mem_map, addr);
+    uint8_t *p;
+
+    if (!pr || !pr->is_ram)
+        return -1;
+    p = pr->phys_mem + (uintptr_t)(addr - pr->addr);
+    if (size_log2 == 2)
+        *pval = *(uint32_t *)p;
+    else
+        *pval = *(uint64_t *)p;
+    return 0;
+}
+
+/* xiaonux: the page walk of get_phys_addr() for the current satp, with no
+   side effects: A/D bits are never written and the U/SUM/MXR checks are
+   skipped, so a debugger can read any mapped page. Uses the current priv
+   (M mode or bare translation is the identity). Returns -1 if unmapped. */
+static int glue(debug_walk, MAX_XLEN)(RISCVCPUState *s, target_ulong *ppaddr,
+                                      target_ulong vaddr)
+{
+    int mode, levels, pte_bits, pte_idx, pte_mask, pte_size_log2, vaddr_shift, i;
+    int pte_addr_bits, xwr;
+    target_ulong pte_addr, paddr, vaddr_mask;
+    uint64_t pte;
+
+    if (s->priv == PRV_M) {
+        if (s->cur_xlen < MAX_XLEN)
+            *ppaddr = vaddr & (((target_ulong)1 << s->cur_xlen) - 1);
+        else
+            *ppaddr = vaddr;
+        return 0;
+    }
+#if MAX_XLEN == 32
+    mode = s->satp >> 31;
+    if (mode == 0) {
+        *ppaddr = vaddr;
+        return 0;
+    }
+    levels = 2;
+    pte_size_log2 = 2;
+    pte_addr_bits = 22;
+#else
+    mode = (s->satp >> 60) & 0xf;
+    if (mode == 0) {
+        *ppaddr = vaddr;
+        return 0;
+    }
+    if (mode != 8 && mode != 9)   /* only Sv39 and Sv48 */
+        return -1;
+    levels = mode - 8 + 3;
+    pte_size_log2 = 3;
+    vaddr_shift = MAX_XLEN - (PG_SHIFT + levels * 9);
+    if ((((target_long)vaddr << vaddr_shift) >> vaddr_shift) != vaddr)
+        return -1;
+    pte_addr_bits = 44;
+#endif
+    pte_addr = (s->satp & (((target_ulong)1 << pte_addr_bits) - 1)) << PG_SHIFT;
+    pte_bits = 12 - pte_size_log2;
+    pte_mask = (1 << pte_bits) - 1;
+    for (i = 0; i < levels; i++) {
+        vaddr_shift = PG_SHIFT + pte_bits * (levels - 1 - i);
+        pte_idx = (vaddr >> vaddr_shift) & pte_mask;
+        pte_addr += pte_idx << pte_size_log2;
+        if (glue(debug_pte_read, MAX_XLEN)(s, pte_addr, &pte, pte_size_log2) < 0)
+            return -1;
+        if (!(pte & PTE_V_MASK))
+            return -1;
+        paddr = (target_ulong)((pte >> 10) << PG_SHIFT);
+        xwr = (pte >> 1) & 7;
+        if (xwr != 0) {
+            if (xwr == 2 || xwr == 6)
+                return -1;
+            vaddr_mask = ((target_ulong)1 << vaddr_shift) - 1;
+            *ppaddr = (vaddr & vaddr_mask) | (paddr & ~vaddr_mask);
+            return 0;
+        }
+        pte_addr = paddr;
+    }
+    return -1;
+}
+
+/* xiaonux: copies guest memory for the debugger, page by page. Only RAM is
+   accessible, so no device is touched. A write updates the RAM, drops the
+   TLB entries for the touched range, and (XN_JIT) drops translated code. */
+static int glue(riscv_cpu_debug_mem, MAX_XLEN)(RISCVCPUState *s, uint64_t vaddr,
+                                               uint8_t *buf, int len, int write)
+{
+    while (len > 0) {
+        target_ulong paddr;
+        PhysMemoryRange *pr;
+        uint64_t n, remain;
+        uint8_t *host;
+
+        if (glue(debug_walk, MAX_XLEN)(s, &paddr, (target_ulong)vaddr) < 0)
+            return -1;
+        pr = get_phys_mem_range(s->mem_map, paddr);
+        if (!pr || !pr->is_ram)
+            return -1;
+        n = (uint64_t)(PG_MASK + 1) - (vaddr & PG_MASK);
+        if (n > (uint64_t)len)
+            n = len;
+        remain = pr->addr + pr->size - paddr;
+        if (remain < n)
+            n = remain;
+        if (n == 0)
+            return -1;
+        host = pr->phys_mem + (uintptr_t)(paddr - pr->addr);
+        if (write) {
+            memcpy(host, buf, n);
+            phys_mem_set_dirty_bit(pr, paddr - pr->addr);
+            glue(riscv_cpu_flush_tlb_write_range_ram, MAX_XLEN)(s, host, n);
+#ifdef XN_JIT
+            xn_jit_invalidate_host_page((uintptr_t)host);
+#endif
+        } else {
+            memcpy(buf, host, n);
+        }
+        buf += n;
+        vaddr += n;
+        len -= (int)n;
+    }
+    return 0;
+}
+
 const RISCVCPUClass glue(riscv_cpu_class, MAX_XLEN) = {
     glue(riscv_cpu_init, MAX_XLEN),
     glue(riscv_cpu_end, MAX_XLEN),
@@ -1518,6 +1708,8 @@ const RISCVCPUClass glue(riscv_cpu_class, MAX_XLEN) = {
     glue(riscv_cpu_flush_tlb_write_range_ram, MAX_XLEN),
     glue(riscv_cpu_set_ext, MAX_XLEN), /* xiaonux */
     glue(riscv_cpu_sstc_poll, MAX_XLEN), /* xiaonux */
+    glue(riscv_cpu_debug_reg, MAX_XLEN), /* xiaonux */
+    glue(riscv_cpu_debug_mem, MAX_XLEN), /* xiaonux */
 };
 
 #if CONFIG_RISCV_MAX_XLEN == MAX_XLEN

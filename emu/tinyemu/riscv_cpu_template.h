@@ -1727,8 +1727,10 @@ static void no_inline glue(riscv_cpu_interp_x, XLEN)(RISCVCPUState *s,
             goto illegal_insn;
         }
         /* update PC for next instruction */
-#if defined(XN_JIT) && XLEN == 64
-        /* lockstep checker: stop after every instruction */
+#if XLEN == 64
+        /* xiaonux: step mode (JIT lockstep checker and gdb stub): stop
+           after every instruction. NEXT_INSN/C_NEXT_INSN break out of the
+           switch to reach this check. */
         if (unlikely(xn_step_mode))
             code_end = code_ptr;
 #endif

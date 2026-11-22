@@ -452,3 +452,37 @@ EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
 #endif
     return delay;
 }
+
+/* xiaonux: gdb remote stub (xv6-virt). The JS side pumps bytes both ways:
+   gdb_input() for what the client sent, Module.onGdb for the replies. */
+int riscv_machine_gdb_attach(VirtMachine *s1, int start_halted,
+                             void (*out)(void *o, const uint8_t *buf, int len),
+                             void *o);
+void riscv_machine_gdb_input(VirtMachine *s1, const uint8_t *buf, int len);
+int riscv_machine_gdb_killed(VirtMachine *s1);
+extern void gdb_output(const uint8_t *buf, int len); /* lib.js */
+
+static void gdb_out(void *o, const uint8_t *buf, int len)
+{
+    gdb_output(buf, len);
+}
+
+/* returns 0 once attached, -1 if the VM isn't the xv6-virt machine */
+EMSCRIPTEN_KEEPALIVE int vm_gdb_attach(int start_halted)
+{
+    if (!global_vm)
+        return -1;
+    return riscv_machine_gdb_attach(global_vm, start_halted, gdb_out, NULL);
+}
+
+EMSCRIPTEN_KEEPALIVE void gdb_input(const uint8_t *buf, int len)
+{
+    if (global_vm)
+        riscv_machine_gdb_input(global_vm, buf, len);
+}
+
+/* 1 after the client sent `k`: the front end should stop the VM */
+EMSCRIPTEN_KEEPALIVE int vm_gdb_killed(void)
+{
+    return global_vm ? riscv_machine_gdb_killed(global_vm) : 0;
+}

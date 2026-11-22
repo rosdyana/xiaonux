@@ -39,6 +39,11 @@ addToLibrary({
     if (Module.onReady) Module.onReady(restored);
   },
 
+  // xiaonux: gdb stub replies (see vm_gdb_attach in xemu.c)
+  gdb_output: function (buf, len) {
+    if (Module.onGdb) Module.onGdb(HEAPU8.slice(buf, buf + len));
+  },
+
   agent_output: function (buf, len) {
     if (Module.onAgent) Module.onAgent(HEAPU8.slice(buf, buf + len));
   },

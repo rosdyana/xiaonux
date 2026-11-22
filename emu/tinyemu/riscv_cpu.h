@@ -58,6 +58,8 @@ typedef struct {
     /* xiaonux: added last, see riscv_cpu_set_ext / riscv_cpu_sstc_poll */
     void (*riscv_cpu_set_ext)(RISCVCPUState *s, uint32_t ext);
     int64_t (*riscv_cpu_sstc_poll)(RISCVCPUState *s);
+    int (*riscv_cpu_debug_reg)(RISCVCPUState *s, int regno, uint64_t *val, int write); /* xiaonux */
+    int (*riscv_cpu_debug_mem)(RISCVCPUState *s, uint64_t vaddr, uint8_t *buf, int len, int write); /* xiaonux */
 } RISCVCPUClass;
 
 /* xiaonux: CPU extension bits for the xv6-virt machine profile. With
@@ -67,6 +69,10 @@ typedef struct {
 typedef struct {
     const RISCVCPUClass *class_ptr;
 } RISCVCPUCommonState;
+
+/* xiaonux: when nonzero, the 64-bit interpreter returns after every
+   instruction (used for gdb single-step and breakpoints). */
+extern int xn_step_mode;
 
 int riscv_cpu_get_max_xlen(void);
 
@@ -138,6 +144,19 @@ static inline int64_t riscv_cpu_sstc_poll(RISCVCPUState *s)
 {
     const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
     return c->riscv_cpu_sstc_poll(s);
+}
+
+/* xiaonux: gdb stub access (see xn_gdb.c for the register numbering).
+   Returns 0, or -1 if the register or the memory is not accessible. */
+static inline int riscv_cpu_debug_reg(RISCVCPUState *s, int regno, uint64_t *val, int write)
+{
+    const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
+    return c->riscv_cpu_debug_reg(s, regno, val, write);
+}
+static inline int riscv_cpu_debug_mem(RISCVCPUState *s, uint64_t vaddr, uint8_t *buf, int len, int write)
+{
+    const RISCVCPUClass *c = ((RISCVCPUCommonState *)s)->class_ptr;
+    return c->riscv_cpu_debug_mem(s, vaddr, buf, len, write);
 }
 
 #endif /* RISCV_CPU_H */

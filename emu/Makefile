@@ -20,7 +20,7 @@ SLIRP := bootp ip_icmp mbuf slirp tcp_output cksum ip_input misc socket \
   tcp_subr udp if ip_output sbuf tcp_input tcp_timer
 
 COMMON := virtio pci fs cutils iomem simplefb json machine temu fs_disk \
-  riscv_machine softfp xn_uart xn_plic $(addprefix slirp/,$(SLIRP))
+  riscv_machine softfp xn_uart xn_plic xn_gdb $(addprefix slirp/,$(SLIRP))
 
 OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(COMMON))) $(OUT)/riscv_cpu64.o
 
