@@ -1,9 +1,9 @@
 /// <reference lib="webworker" />
 // Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
-// Runs the xv6-virt profile from bytes already in memory, for the page's
-// window.xiaonuxXv6 test hook. Created only when the hook is called; the
-// Debian VM (vm.worker.ts) is unchanged. Small on purpose: no disk chunks,
-// network, agent or snapshots.
+// Runs the xv6-virt profile from bytes already in memory. Created by the page
+// only: the xv6 bridge (xv6-bridge.ts, `make qemu` in the guest) and the
+// window.xiaonuxXv6 test hook. The Debian VM (vm.worker.ts) is unchanged.
+// Small on purpose: no disk chunks, network, agent or snapshots.
 import type { FromXv6Worker, ToXv6Worker } from './protocol';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -17,6 +17,11 @@ interface Xv6Xemu {
   _vm_insn_count(): number;
   _vm_mem_disk(plen: number): number;
   _console_queue_char(c: number): number;
+  _vm_gdb_attach(startHalted: number): number;
+  _gdb_input(p: number, len: number): void;
+  _vm_gdb_killed(): number;
+  _vm_console_sync(on: number): number;
+  _vm_console_resume(): void;
   ccall(name: string, ret: 'number', types: string[], args: unknown[]): number;
 }
 
@@ -39,6 +44,9 @@ let outBytes = 0;
 let sleepTimer: ReturnType<typeof setTimeout> | null = null;
 let lastStats = 0;
 let lastInsns = 0;
+// gdb: bytes from the client that arrive before the stub is attached wait here.
+let gdbAttached = false;
+const gdbPending: Uint8Array[] = [];
 
 // MessageChannel gives a macrotask yield without setTimeout's 4 ms clamp.
 const chan = new MessageChannel();
@@ -88,6 +96,14 @@ function tick() {
   } while (delay === 0 && performance.now() - start < SLICE_BUDGET_MS);
   flushOutput();
 
+  // The gdb client sent `k`: the stub stops the machine; end the session the
+  // same way as `stop` (the fs goes back to the page).
+  if (gdbAttached && vm._vm_gdb_killed()) {
+    post({ type: 'killed' });
+    stop();
+    return;
+  }
+
   const now = performance.now();
   if (now - lastStats > 1000) {
     // Guest instructions retired per wall-clock microsecond, as in vm.worker.ts.
@@ -99,6 +115,7 @@ function tick() {
   }
 
   if (delay === 0) yieldNow();
+  // A halted gdb machine returns 10 ms here: an idle poll, woken by gdb-in.
   else sleepTimer = setTimeout(safeTick, Math.max(1, delay));
 }
 
@@ -109,6 +126,21 @@ function wake() {
     sleepTimer = null;
     yieldNow();
   }
+}
+
+function queueInput(bytes: Uint8Array) {
+  for (const b of bytes) input.push(b);
+  wake();
+}
+
+function deliverGdb(bytes: Uint8Array) {
+  if (!vm || bytes.length === 0) return;
+  const p = vm._malloc(bytes.length);
+  // Read the heap after the malloc: it may have grown.
+  vm.HEAPU8.set(bytes, p);
+  vm._gdb_input(p, bytes.length);
+  vm._free(p);
+  wake();
 }
 
 async function start(m: Extract<ToXv6Worker, { type: 'start' }>) {
@@ -128,6 +160,8 @@ async function start(m: Extract<ToXv6Worker, { type: 'start' }>) {
       outChunks.push(bytes.slice());
       outBytes += bytes.length;
     },
+    // lib.js passes a fresh copy, so it can be transferred.
+    onGdb: (bytes: Uint8Array) => post({ type: 'gdb', data: bytes }, [bytes.buffer]),
     onReady: () => {
       running = true;
       post({ type: 'ready', ms: Math.round(performance.now() - t0) });
@@ -148,6 +182,15 @@ async function start(m: Extract<ToXv6Worker, { type: 'start' }>) {
     ['string', 'number', 'number', 'number', 'number', 'number'],
     ['xv6-virt', kp, kernel.length, fp, fs.length, RAM_MB]);
   if (rc !== 0) throw new Error(`vm_start_mem failed (${rc})`);
+  // Grading (the shim's stdout is a pipe): pause after each prompt until the bridge resumes us.
+  if (m.sync && mod._vm_console_sync(1) !== 0) throw new Error('prompt sync needs the xv6 machine');
+  if (m.gdb) {
+    // After the machine exists, before the first slice; wait = halted until the client continues.
+    const g = mod._vm_gdb_attach(m.wait ? 1 : 0);
+    if (g !== 0) throw new Error(`gdb stub failed to attach (${g})`);
+    gdbAttached = true;
+    for (const b of gdbPending.splice(0)) deliverGdb(b);
+  }
   yieldNow();
 }
 
@@ -175,11 +218,23 @@ self.onmessage = (e: MessageEvent<ToXv6Worker>) => {
     case 'start':
       start(m).catch((err) => post({ type: 'error', message: `xv6 start: ${(err as Error)?.stack ?? err}` }));
       break;
-    case 'input': {
-      for (const b of new TextEncoder().encode(m.data)) input.push(b);
-      wake();
+    case 'input':
+      queueInput(new TextEncoder().encode(m.data));
       break;
-    }
+    case 'input-bytes':
+      queueInput(m.data);
+      break;
+    case 'gdb-in':
+      if (gdbAttached) deliverGdb(m.data);
+      else gdbPending.push(m.data);
+      break;
+    case 'resume':
+      // The shim's ack: run again. wake() ends the idle sleep the pause left us in.
+      if (vm) {
+        vm._vm_console_resume();
+        wake();
+      }
+      break;
     case 'stop':
       stop();
       break;

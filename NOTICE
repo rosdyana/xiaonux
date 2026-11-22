@@ -24,6 +24,8 @@ Components fetched at build time and served with the site
 ---------------------------------------------------------
 OpenSBI 1.9           BSD-2-Clause
 Linux 6.12.117        GPL-2.0-only (source: kernel.org; config: image/kernel.config)
+xv6-riscv and the MIT 6.1810 labs  MIT (Frans Kaashoek, Robert Morris, Russ Cox, MIT;
+                      source as git bundles in /usr/share/xv6 in the image)
 Debian 13 packages    various (mostly GPL / LGPL / BSD / MIT); per-package list and
                       source links on the Licenses page (snapshot.debian.org)
 Python wheels         numpy, pandas, cryptography, pillow, pyyaml, cffi, psutil,

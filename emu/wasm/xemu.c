@@ -486,3 +486,20 @@ EMSCRIPTEN_KEEPALIVE int vm_gdb_killed(void)
 {
     return global_vm ? riscv_machine_gdb_killed(global_vm) : 0;
 }
+
+/* xiaonux: prompt sync (xv6-virt only). On: the machine pauses after the
+   console prints "$ " until vm_console_resume. Returns -1 for other machines. */
+int riscv_machine_console_sync(VirtMachine *s1, int on);
+void riscv_machine_console_resume(VirtMachine *s1);
+
+EMSCRIPTEN_KEEPALIVE int vm_console_sync(int on)
+{
+    return global_vm ? riscv_machine_console_sync(global_vm, on) : -1;
+}
+
+/* While paused, vm_run_slice returns a 10 ms delay, so the caller idles. */
+EMSCRIPTEN_KEEPALIVE void vm_console_resume(void)
+{
+    if (global_vm)
+        riscv_machine_console_resume(global_vm);
+}

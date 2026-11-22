@@ -16,10 +16,21 @@ Each command is answered with "ok <cmd> [...]" or "err <cmd> <reason>".
 After a snapshot restore the page sends seed + time before showing the
 prompt, so every visitor gets their own random state and the right date.
 
+x6 relay (xv6 under `make qemu` in the guest): lines starting with "x6 " are
+not commands. Lines from /dev/hvc1 go to the one client connected to
+/run/xiaonux-agent.sock (root only, mode 0600) and are dropped when none is
+connected. Lines from that client go to /dev/hvc1 unchanged. The agent never
+looks inside them (the page and the shim own the protocol). A second client
+gets "x6 busy" and is closed. When the client goes away the agent sends
+"x6 stop" to the page, which stops the machine.
+
 Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
 """
-import base64, fcntl, hashlib, os, struct, termios, time, tty
+import base64, fcntl, hashlib, os, select, socket, struct, termios, time, tty
 
+SOCK = "/run/xiaonux-agent.sock"
+CLIENT_LINE_MAX = 256 << 10  # longest line we accept from the x6 client (a chunk is ~64 KB)
+CLIENT_OUT_MAX = 64 << 20    # a client that stops reading is dropped past this backlog
 RNDADDENTROPY = 0x40085203  # _IOW('R', 0x03, int[2])
 RNDRESEEDCRNG = 0x5207      # _IO('R', 0x07)
 UPLOADS = "/root/uploads"
@@ -120,6 +131,47 @@ def lock_memory():
         pass
 
 
+def listen_socket() -> socket.socket:
+    """The x6 socket. Root only: the umask is set for the bind, so the socket
+    is never briefly accessible to others."""
+    try:
+        os.unlink(SOCK)  # left over from a previous agent
+    except FileNotFoundError:
+        pass
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old = os.umask(0o177)
+    try:
+        srv.bind(SOCK)
+    finally:
+        os.umask(old)
+    os.chmod(SOCK, 0o600)
+    srv.listen(4)
+    srv.setblocking(False)
+    return srv
+
+
+class Client:
+    """The one x6 client. Writes are queued, so the agent never blocks on it."""
+
+    def __init__(self, conn: socket.socket):
+        conn.setblocking(False)
+        self.conn = conn
+        self.inbuf = bytearray()
+        self.outbuf = bytearray()
+
+    def queue(self, data: bytes) -> bool:
+        self.outbuf += data
+        return len(self.outbuf) <= CLIENT_OUT_MAX
+
+    def flush(self):
+        if self.outbuf:
+            try:
+                n = self.conn.send(self.outbuf)
+            except BlockingIOError:
+                return
+            del self.outbuf[:n]
+
+
 def main():
     lock_memory()
     fd = os.open("/dev/hvc1", os.O_RDWR | os.O_NOCTTY)
@@ -130,25 +182,96 @@ def main():
             n = os.write(fd, b)
             b = b[n:]
 
+    try:
+        srv = listen_socket()
+    except OSError:
+        srv = None  # no x6 relay; the commands below still work
+    client = None
     buf = bytearray()
+
     while True:
-        data = os.read(fd, 65536)
-        if not data:
-            time.sleep(0.1)
-            continue
-        buf += data
-        while True:
-            i = buf.find(b"\n")
-            if i < 0:
-                break
-            line = buf[:i].decode("ascii", "replace").strip()
-            del buf[:i + 1]
+        rl = [fd] + ([srv] if srv is not None else []) + ([client.conn] if client else [])
+        wl = [client.conn] if client and client.outbuf else []
+        r, w, _ = select.select(rl, wl, [])
+
+        # Writes to hvc1 happen only here, never in the middle of a reply:
+        # handle() writes all its lines (a get's data lines) before it returns.
+        if fd in r:
+            data = os.read(fd, 65536)
+            if not data:
+                time.sleep(0.1)  # hangup: don't spin
+            else:
+                buf += data
+                while True:
+                    i = buf.find(b"\n")
+                    if i < 0:
+                        break
+                    raw = bytes(buf[:i])
+                    del buf[:i + 1]
+                    line = raw.decode("ascii", "replace").strip()
+                    if line.startswith("x6 "):
+                        if client and not client.queue(raw.rstrip(b"\r") + b"\n"):
+                            client = drop(client, out)
+                        continue
+                    try:
+                        reply = handle(line, out)
+                    except Exception as e:  # report and keep serving
+                        reply = f"err {line.split()[0] if line else '?'} {type(e).__name__}\n"
+                    if reply:
+                        out(reply.encode())
+
+        if srv is not None and srv in r:
             try:
-                reply = handle(line, out)
-            except Exception as e:  # report and keep serving
-                reply = f"err {line.split()[0] if line else '?'} {type(e).__name__}\n"
-            if reply:
-                out(reply.encode())
+                conn, _ = srv.accept()
+            except OSError:  # EAGAIN, or the peer went away first
+                conn = None
+            if conn is not None:
+                if client is None:
+                    client = Client(conn)
+                else:
+                    try:
+                        conn.send(b"x6 busy\n")
+                    except OSError:
+                        pass
+                    conn.close()
+
+        if client and client.conn in r:
+            try:
+                chunk = client.conn.recv(65536)
+            except BlockingIOError:
+                chunk = None
+            except OSError:
+                chunk = b""
+            if chunk == b"":
+                client = drop(client, out)
+            elif chunk:
+                client.inbuf += chunk
+                while True:
+                    i = client.inbuf.find(b"\n")
+                    if i < 0:
+                        break
+                    raw = bytes(client.inbuf[:i])
+                    del client.inbuf[:i + 1]
+                    if raw.startswith(b"x6 "):
+                        out(raw.rstrip(b"\r") + b"\n")
+                if len(client.inbuf) > CLIENT_LINE_MAX:
+                    client = drop(client, out)
+
+        if client and client.conn in w:
+            try:
+                client.flush()
+            except OSError:
+                client = drop(client, out)
+
+
+def drop(client: Client, out) -> None:
+    """The x6 client went away: close it and tell the page to stop the machine."""
+    try:
+        client.conn.close()
+    except OSError:
+        pass
+    out(b"x6 stop\n")
+    return None
 
 
 if __name__ == "__main__":

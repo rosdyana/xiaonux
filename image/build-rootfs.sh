@@ -14,6 +14,12 @@ IMG_SIZE=${IMG_SIZE:-2G}
 [ "$(id -u)" = 0 ] || { echo "run with sudo"; exit 1; }
 ROOT="$XBUILD/rootfs"
 IMG="$XBUILD/rootfs.img"
+CONTENT="$XBUILD/xv6-content"
+# The xv6 bundles come from the builder VM (image/xv6/build-content.sh). Check
+# before the old tree is deleted.
+for f in xv6-labs-2026.bundle xv6-labs-2025.bundle xv6-labs-2024.bundle xv6-riscv.bundle manifest.json LICENSE.xv6; do
+  [ -f "$CONTENT/$f" ] || { echo "missing $CONTENT/$f (run image/xv6/build-content.sh first)"; exit 1; }
+done
 rm -rf "$ROOT" "$IMG"
 mkdir -p "$ROOT"
 
@@ -22,6 +28,7 @@ PKGS=systemd-sysv,udev,iproute2,iputils-ping,ca-certificates,curl,python3,python
 # rizin aren't packaged for riscv64 in trixie.
 PKGS=$PKGS,file,binutils-multiarch,xxd,strace,ltrace,gdb-minimal,yara,binwalk,hexedit,jq
 PKGS=$PKGS,vim-tiny,unzip,zip,7zip,net-tools,bind9-dnsutils,tcpdump,nmap,netcat-openbsd,python3-pefile
+PKGS=$PKGS,gcc,make,libc6-dev,bc,git,ccache
 
 mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --dpkgopt='path-exclude=/usr/share/man/*' \
@@ -42,6 +49,17 @@ mmdebstrap --arch=riscv64 --variant=minbase --include="$PKGS" \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-net /usr/local/sbin" \
   --customize-hook="copy-in $REPO/image/guest/xiaonux-net.service /etc/systemd/system" \
   --customize-hook='chroot "$1" systemctl enable xiaonux-net.service' \
+  --customize-hook='mkdir -p "$1/usr/share/xv6"' \
+  --customize-hook="copy-in $REPO/image/xv6/qemu-system-riscv64 /usr/local/bin" \
+  --customize-hook='chmod 0755 "$1/usr/local/bin/qemu-system-riscv64"' \
+  --customize-hook="copy-in $REPO/image/xv6/xv6-ccache.sh /etc/profile.d" \
+  --customize-hook='chmod 0644 "$1/etc/profile.d/xv6-ccache.sh"' \
+  --customize-hook='chroot "$1" sh -c "test -x /usr/bin/ccache && for c in gcc riscv64-linux-gnu-gcc; do test -x /usr/bin/\$c || exit 1; test -L /usr/lib/ccache/\$c || ln -s ../../bin/ccache /usr/lib/ccache/\$c; done; ls -l /usr/lib/ccache"' \
+  --customize-hook="copy-in $CONTENT/xv6-labs-2026.bundle $CONTENT/xv6-labs-2025.bundle $CONTENT/xv6-labs-2024.bundle $CONTENT/xv6-riscv.bundle $CONTENT/manifest.json $CONTENT/LICENSE.xv6 /usr/share/xv6" \
+  --customize-hook='chown -R root:root "$1/usr/share/xv6" && chmod 0644 "$1"/usr/share/xv6/*' \
+  --customize-hook="copy-in $REPO/image/xv6/guest-setup.sh /root" \
+  --customize-hook='chroot "$1" env HOME=/root sh /root/guest-setup.sh' \
+  --customize-hook='rm -f "$1/root/guest-setup.sh"' \
   --customize-hook='rm -f "$1/etc/resolv.conf"; echo "nameserver 10.0.2.3" > "$1/etc/resolv.conf"' \
   --customize-hook='chroot "$1" systemctl mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer e2scrub_all.timer fstrim.timer 2>/dev/null || true' \
   --customize-hook='rm -rf "$1"/var/cache/apt/*.bin "$1"/var/lib/apt/lists/* "$1"/var/log/*.log' \
@@ -63,6 +81,8 @@ rm -rf "$LSRC/common-licenses"
 cp -r "$ROOT/usr/share/common-licenses" "$LSRC/"
 cp "$XBUILD/linux-$LINUX_VERSION/COPYING" "$LSRC/linux-COPYING" 2>/dev/null || echo "warning: no kernel tree; run make kernel first"
 cp "$XBUILD/opensbi-$OPENSBI_VERSION/COPYING.BSD" "$LSRC/opensbi-COPYING.BSD" 2>/dev/null || echo "warning: no OpenSBI tree; run make firmware first"
+cp "$CONTENT/LICENSE.xv6" "$LSRC/xv6-LICENSE.xv6"
+cp "$CONTENT/manifest.json" "$LSRC/xv6-manifest.json"
 chown -R "${SUDO_UID:-0}:${SUDO_GID:-0}" "$LSRC"
 
 truncate -s "$IMG_SIZE" "$IMG"

@@ -53,7 +53,28 @@ struct XNUart {
     uint8_t rx[XN_UART_RX_SIZE];
     int rx_head;
     int rx_count;
+    /* prompt sync: the last byte transmitted, and the pause it causes */
+    int prompt_sync;
+    int paused;
+    uint8_t last_tx;
 };
+
+void xn_uart_set_prompt_sync(XNUart *u, int on)
+{
+    u->prompt_sync = on != 0;
+    if (!u->prompt_sync)
+        u->paused = 0;
+}
+
+int xn_uart_paused(XNUart *u)
+{
+    return u->paused;
+}
+
+void xn_uart_resume(XNUart *u)
+{
+    u->paused = 0;
+}
 
 static void xn_uart_update_irq(XNUart *u)
 {
@@ -161,6 +182,10 @@ static void xn_uart_write(void *opaque, uint32_t offset, uint32_t val,
             if (u->cs)
                 u->cs->write_data(u->cs->opaque, &b, 1);
             u->thre_pending = 1;
+            /* prompt sync: "$ " on the console pauses the machine (see xn_uart_paused) */
+            if (u->prompt_sync && b == ' ' && u->last_tx == '$')
+                u->paused = 1;
+            u->last_tx = b;
         }
         break;
     case 1:

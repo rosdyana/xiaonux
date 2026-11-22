@@ -76,6 +76,8 @@ typedef struct RISCVMachine {
     /* gdb stub (see riscv_machine_gdb_attach). Appended last. */
     XNGdb *gdb;
     int gdb_skip_bp;   /* the next instruction ignores a breakpoint (after a resume) */
+    /* prompt sync (xiaonux grading, see riscv_machine_console_sync). Appended last. */
+    int console_sync;
 } RISCVMachine;
 
 #define LOW_RAM_SIZE   0x00010000 /* 64KB */
@@ -1219,6 +1221,10 @@ static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
         if (delay > 10)
             delay = 10;
     }
+    /* xiaonux: paused after "$ " under prompt sync: wait for the resume (the
+       UART is still polled above, so typed input is queued meanwhile). */
+    if (m->console_sync && xn_uart_paused(m->uart))
+        return 10;
     /* xiaonux: halted under the gdb stub. No guest time passes, so poll for
        debugger input (virt_machine_run selects on the gdb socket too). */
     if (m->gdb && xn_gdb_halted(m->gdb))
@@ -1226,6 +1232,28 @@ static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
     if (!riscv_cpu_get_power_down(s))
         delay = 0;
     return delay;
+}
+
+/* xiaonux: runs n instructions. With prompt sync on, in chunks of at most
+   XN_SYNC_CHUNK, so a pause at "$ " takes effect within that many instructions.
+   Stops early at a pause or on wfi (the sleep logic then runs). Without prompt
+   sync this is one riscv_cpu_interp call, as before. */
+#define XN_SYNC_CHUNK 10000
+static void run_cpu(RISCVMachine *m, int n)
+{
+    RISCVCPUState *cpu = m->cpu_state;
+
+    if (!m->console_sync) {
+        riscv_cpu_interp(cpu, n);
+        return;
+    }
+    while (n > 0) {
+        int k = min_int(n, XN_SYNC_CHUNK);
+        riscv_cpu_interp(cpu, k);
+        n -= k;
+        if (xn_uart_paused(m->uart) || riscv_cpu_get_power_down(cpu))
+            break;
+    }
 }
 
 /* xiaonux: one slice with the gdb stub attached. Breakpoints and stepping
@@ -1250,7 +1278,7 @@ static void gdb_interp(RISCVMachine *m, int max_exec_cycle)
     stepping = xn_gdb_stepping(g);
     if (!stepping && !xn_gdb_has_breakpoints(g)) {
         m->gdb_skip_bp = 0;
-        riscv_cpu_interp(cpu, max_exec_cycle);
+        run_cpu(m, max_exec_cycle);
         return;
     }
     xn_step_mode = 1;
@@ -1270,8 +1298,9 @@ static void gdb_interp(RISCVMachine *m, int max_exec_cycle)
             xn_gdb_stop(g, 5);
             return;
         }
-        if (riscv_cpu_get_power_down(cpu))
-            break;   /* wfi: let the sleep logic run */
+        /* wfi, or a prompt-sync pause: let the sleep logic run */
+        if (riscv_cpu_get_power_down(cpu) || (m->console_sync && xn_uart_paused(m->uart)))
+            break;
     }
     xn_step_mode = 0;
 }
@@ -1279,11 +1308,37 @@ static void gdb_interp(RISCVMachine *m, int max_exec_cycle)
 static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)
 {
     RISCVMachine *s = (RISCVMachine *)s1;
+    /* xiaonux: paused after "$ " under prompt sync: run nothing until the resume */
+    if (s->console_sync && xn_uart_paused(s->uart))
+        return;
     if (s->gdb) {
         gdb_interp(s, max_exec_cycle);
         return;
     }
-    riscv_cpu_interp(s->cpu_state, max_exec_cycle);
+    run_cpu(s, max_exec_cycle);
+}
+
+/* xiaonux: prompt sync for grading (xv6-virt only). With it on, the UART
+   pauses the machine right after the console transmits "$ " (see xn_uart.h),
+   until riscv_machine_console_resume. Returns -1 for other machines, else 0. */
+int riscv_machine_console_sync(VirtMachine *s1, int on)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (!m->xv6 || !m->uart)
+        return -1;
+    m->console_sync = on != 0;
+    xn_uart_set_prompt_sync(m->uart, on);
+    return 0;
+}
+
+/* xiaonux: the reader answered the prompt: run again (no-op for other machines). */
+void riscv_machine_console_resume(VirtMachine *s1)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (m->xv6 && m->uart)
+        xn_uart_resume(m->uart);
 }
 
 /* xiaonux: attaches the gdb stub. xv6-virt only: returns -1 for other

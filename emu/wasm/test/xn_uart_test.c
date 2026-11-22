@@ -227,6 +227,55 @@ int main(void)
     CHECK_EQ(rd(5) & 1, 0, "FCR bit 1 clears the RX FIFO");
     CHECK_EQ(rd(0), 0, "RBR is empty after the RX clear");
 
+    /* 8. prompt sync: "$ " on the console pauses the machine until resumed */
+    cons.out_len = 0;
+    CHECK_EQ(xn_uart_paused(u), 0, "not paused at the start of the sync test");
+    wr(0, '$');
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 0, "sync off: \"$ \" does not pause");
+    xn_uart_set_prompt_sync(u, 1);
+    wr(0, '$');
+    wr(0, 'x');
+    CHECK_EQ(xn_uart_paused(u), 0, "\"$x\" does not pause");
+    wr(0, ' ');
+    wr(0, '$');
+    CHECK_EQ(xn_uart_paused(u), 0, "\" $\" does not pause");
+    wr(0, 'y');
+    CHECK_EQ(xn_uart_paused(u), 0, "\"$\" then \"y\" does not pause");
+    wr(0, '$');
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 1, "\"$ \" pauses with sync on");
+    wr(0, 'z');
+    CHECK_EQ(xn_uart_paused(u), 1, "output while paused keeps the pause");
+    CHECK_EQ(cons.out_len, 10, "all bytes are still output while paused");
+    CHECK(memcmp(cons.out, "$ $x $y$ z", 10) == 0, "bytes output in order");
+    xn_uart_resume(u);
+    CHECK_EQ(xn_uart_paused(u), 0, "resume clears the pause");
+    xn_uart_resume(u);
+    CHECK_EQ(xn_uart_paused(u), 0, "resume when not paused is a no-op");
+
+    /* a DLL write is not a transmit: it neither pauses nor sets the last byte */
+    wr(3, 0x80);
+    wr(0, '$');
+    wr(3, 3);
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 0, "a DLL write of '$' does not count as transmitted");
+
+    /* turning sync off clears a pending pause and stops new ones */
+    wr(0, '$');
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 1, "\"$ \" pauses again");
+    xn_uart_set_prompt_sync(u, 0);
+    CHECK_EQ(xn_uart_paused(u), 0, "sync off clears the pause");
+    wr(0, '$');
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 0, "sync off: no pause");
+    xn_uart_set_prompt_sync(u, 1);
+    wr(0, '$');
+    wr(0, ' ');
+    CHECK_EQ(xn_uart_paused(u), 1, "sync back on: pauses");
+    xn_uart_resume(u);
+
     puts("ok");
     return 0;
 }

@@ -1,0 +1,691 @@
+#!/usr/bin/python3
+# Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
+"""qemu-system-riscv64 for xiaonux: runs xv6 in the browser tab.
+
+The xv6 labs' Makefiles call this in place of QEMU (`make qemu`, `make
+qemu-gdb`, `make grade`). It accepts the options those Makefiles pass for
+xv6 (QEMUOPTS and QEMUGDB), and nothing else: a lab option it can't provide
+(the net lab's -netdev/e1000) is refused with a message.
+
+The machine itself runs in the page. This program is the bridge's other end:
+it talks the x6 protocol through the agent's socket (/run/xiaonux-agent.sock),
+where each line is "x6 <op> [args]" (see web/src/xv6-bridge.ts):
+
+  begin/kb/fb/run  send the kernel (flattened from the ELF) and the fs.img
+  ready            the machine started; the console and gdb go live
+  ack              (pipes only) the prompt pause is over: xv6 may run again
+  in / out         console input (this terminal) and output
+  gi / go          gdb remote protocol, to and from a client on 127.0.0.1
+  stop             quit; the page answers with fd blocks and exit
+  fd / exit        fs.img blocks changed by the guest, written to the file
+
+Ctrl-A x quits, Ctrl-A Ctrl-A sends Ctrl-A (terminal only). Standard library only.
+"""
+import base64, os, re, select, signal, socket, struct, sys, termios, time
+
+VERSION = "QEMU emulator version 10.0.0 (xiaonux xv6 runner)"
+AGENT_SOCK = "/run/xiaonux-agent.sock"
+RAM_BASE = 0x80000000
+RAM_MB = 128                # the page always runs 128 MB
+CHUNK = 48 * 1024           # raw bytes per x6 line
+ACK_GAP = 0.05              # s; a pipe reader's time to answer a "$ " (see write_out)
+KERNEL_MAX = 8 << 20
+FS_MAX = 64 << 20
+HANDSHAKE_S = 10.0          # after `run` is sent, for `ready`
+EXIT_WAIT_S = 5.0           # after `stop`, for `exit`
+POLL_S = 0.5                # parent-process and deadline checks
+GDB_DEFAULT_PORT = 1234
+
+USAGE = """Usage: qemu-system-riscv64 [options]
+xiaonux runs xv6 in the browser tab. These are the options it accepts:
+-machine virt         the only machine (-machine help lists it)
+-bios none            no firmware: the kernel is loaded at 0x80000000
+-kernel FILE          RISC-V ELF64 kernel
+-m 128M               RAM (xiaonux always has 128 MB; other sizes warn)
+-smp N                CPUs (xiaonux runs 1; N > 1 prints a notice)
+-nographic            the console is this terminal (Ctrl-A x quits)
+-drive file=FILE,format=raw,if=none,id=ID
+-device virtio-blk-device,drive=ID
+-global ...           accepted, ignored
+-S                    with -gdb: wait for the client before running
+-gdb dev              gdb server: tcp::PORT or tcp:127.0.0.1:PORT
+-s                    same as -gdb tcp::1234
+-version, -help, -machine help
+Anything else is refused: "not supported in xiaonux".
+"""
+
+
+class ShimError(Exception):
+    """A message for the user; the shim exits 1 after printing it."""
+
+
+class Options:
+    def __init__(self):
+        self.action = None          # None (run), "version", "help", "machine-help"
+        self.kernel = None
+        self.ram_mb = None
+        self.smp = 1
+        self.drive = None           # fs.img path
+        self.gdb_port = None
+        self.halt = False           # -S
+
+
+def parse_mem(v: str) -> int:
+    """-m N[K|M|G] in MB (no suffix = MB, as in QEMU)."""
+    m = re.fullmatch(r"(\d+)([KMGkmg]?)", v)
+    if not m:
+        raise ShimError(f"invalid -m value: {v}")
+    n, unit = int(m.group(1)), m.group(2).upper() or "M"
+    if unit == "K":
+        n //= 1024
+    elif unit == "G":
+        n *= 1024
+    if n < 1:
+        raise ShimError(f"invalid -m value: {v}")
+    return n
+
+
+def parse_gdb(v: str) -> int:
+    parts = v.split(":")
+    if len(parts) != 3 or parts[0] != "tcp" or parts[1] not in ("", "127.0.0.1", "localhost"):
+        raise ShimError(f"not supported in xiaonux: -gdb {v} (use tcp::PORT)")
+    if not parts[2].isdigit() or not 0 < int(parts[2]) < 65536:
+        raise ShimError(f"invalid gdb port: {parts[2]}")
+    return int(parts[2])
+
+
+def parse_drive(v: str) -> str:
+    path = None
+    for kv in v.split(","):
+        k, _, val = kv.partition("=")
+        if k == "file":
+            path = val
+        elif k == "format":
+            if val != "raw":
+                raise ShimError(f"not supported in xiaonux: -drive format={val} (raw only)")
+        elif k not in ("if", "id"):
+            raise ShimError(f"not supported in xiaonux: -drive {k}=")
+    if not path:
+        raise ShimError("-drive needs file=")
+    return path
+
+
+def parse_args(argv) -> Options:
+    o = Options()
+    i = 0
+
+    def value() -> str:
+        nonlocal i
+        i += 1
+        if i >= len(argv):
+            raise ShimError(f"{argv[i - 1]} needs an argument")
+        return argv[i]
+
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-version", "--version"):
+            o.action = "version"
+        elif a in ("-help", "--help", "-h"):
+            o.action = "help"
+        elif a == "-machine":
+            v = value()
+            if v == "help":
+                o.action = "machine-help"
+            elif v.split(",")[0] != "virt":
+                raise ShimError(f"not supported in xiaonux: -machine {v} (virt only)")
+        elif a == "-bios":
+            v = value()
+            if v != "none":
+                raise ShimError(f"not supported in xiaonux: -bios {v} (none only)")
+        elif a == "-kernel":
+            o.kernel = value()
+        elif a == "-m":
+            o.ram_mb = parse_mem(value())
+        elif a == "-smp":
+            v = value()
+            if not v.isdigit() or int(v) < 1:
+                raise ShimError(f"invalid -smp value: {v}")
+            o.smp = int(v)
+        elif a == "-nographic":
+            pass
+        elif a == "-global":
+            value()
+        elif a == "-drive":
+            if o.drive is not None:
+                raise ShimError("only one -drive is supported in xiaonux")
+            o.drive = parse_drive(value())
+        elif a == "-device":
+            v = value()
+            if not v.split(",")[0] == "virtio-blk-device":
+                raise ShimError(f"not supported in xiaonux: -device {v.split(',')[0]}")
+        elif a == "-S":
+            o.halt = True
+        elif a == "-gdb":
+            o.gdb_port = parse_gdb(value())
+        elif a == "-s":
+            o.gdb_port = GDB_DEFAULT_PORT
+        else:
+            raise ShimError(f"not supported in xiaonux: {a}")
+        i += 1
+    return o
+
+
+def flatten_kernel(elf: bytes) -> bytes:
+    """The loadable image of a RISC-V ELF64 kernel, from 0x80000000 (what
+    objcopy -O binary gives: gaps between segments are zero, a trailing .bss
+    is not included)."""
+    if len(elf) < 64 or elf[:4] != b"\x7fELF":
+        raise ShimError("kernel is not an ELF file")
+    if elf[4] != 2 or elf[5] != 1:
+        raise ShimError("kernel must be a little-endian ELF64 file")
+    (e_machine,) = struct.unpack_from("<H", elf, 18)
+    if e_machine != 243:  # EM_RISCV
+        raise ShimError("kernel is not a RISC-V file")
+    (e_phoff,) = struct.unpack_from("<Q", elf, 32)
+    e_phentsize, e_phnum = struct.unpack_from("<HH", elf, 54)
+    if e_phnum == 0 or e_phentsize < 56:
+        raise ShimError("kernel has no program headers")
+    segs = []
+    for n in range(e_phnum):
+        off = e_phoff + n * e_phentsize
+        if off + 56 > len(elf):
+            raise ShimError("kernel is truncated")
+        p_type, _flags, p_offset, _vaddr, p_paddr, p_filesz, p_memsz, _align = struct.unpack_from(
+            "<IIQQQQQQ", elf, off)
+        if p_type != 1 or p_memsz == 0:  # PT_LOAD only
+            continue
+        if p_filesz > p_memsz:
+            raise ShimError("kernel segment file size is larger than its memory size")
+        if p_paddr < RAM_BASE:
+            raise ShimError(f"kernel load address 0x{p_paddr:x} is below 0x80000000")
+        if p_offset + p_filesz > len(elf):
+            raise ShimError("kernel is truncated")
+        segs.append((p_paddr, p_offset, p_filesz))
+    if not segs:
+        raise ShimError("kernel has no loadable segments")
+    end = max(paddr + fsz for paddr, _, fsz in segs)
+    if end - RAM_BASE > RAM_MB << 20:
+        raise ShimError("kernel does not fit in 128 MB")
+    image = bytearray(end - RAM_BASE)
+    for paddr, off, fsz in segs:
+        image[paddr - RAM_BASE:paddr - RAM_BASE + fsz] = elf[off:off + fsz]
+    return bytes(image)
+
+
+def make_raw(fd: int):
+    """cfmakeraw without OPOST: output still turns \\n into \\r\\n, as QEMU's does."""
+    attrs = termios.tcgetattr(fd)
+    iflag, oflag, cflag, lflag, ispeed, ospeed, cc = attrs
+    iflag &= ~(termios.IGNBRK | termios.BRKINT | termios.PARMRK | termios.ISTRIP
+               | termios.INLCR | termios.IGNCR | termios.ICRNL | termios.IXON)
+    lflag &= ~(termios.ECHO | termios.ECHONL | termios.ICANON | termios.ISIG | termios.IEXTEN)
+    cflag &= ~(termios.CSIZE | termios.PARENB)
+    cflag |= termios.CS8
+    cc[termios.VMIN] = 1
+    cc[termios.VTIME] = 0
+    termios.tcsetattr(fd, termios.TCSANOW, [iflag, oflag, cflag, lflag, ispeed, ospeed, cc])
+
+
+def b64(data: bytes) -> bytes:
+    return base64.b64encode(data)
+
+
+class Shim:
+    def __init__(self, opts: Options):
+        self.opts = opts
+        self.phase = "handshake"    # handshake -> live -> stopping
+        self.agent = None
+        self.agent_in = bytearray()
+        self.agent_out = bytearray()
+        self.feed = None            # generator of the session's lines
+        self.handshake_deadline = None
+        self.stop_deadline = None
+        self.stop_requested = False  # set by signals and by a parent change
+        self.stop_sent = False
+        self.gdb_listen = None
+        self.gdb_conn = None
+        self.gdb_out = bytearray()
+        self.fs_file = None
+        self.fs_len = 0
+        self.escape = False         # Ctrl-A seen, waiting for the next key
+        self.ppid = os.getppid()
+        self.exit_code = None
+        self.tty_saved = None
+        self.stdin_tty = os.isatty(0)
+        self.stdout_tty = os.isatty(1)
+        # Prompt sync (pipes only, i.e. grading): the page pauses xv6 after each "$ "
+        # until we send `x6 ack`. See write_out.
+        self.sync_console = not self.stdout_tty
+        self.out_held = bytearray()  # output held back behind an ack
+        self.ack_at = None           # monotonic time of the pending ack, if any
+        self.out_tail = b""          # the last two bytes written to stdout
+        self.stdin_bg = False       # stdin is a tty of a background job: never read it
+
+    # ------------------------------------------------------------ setup
+
+    def run(self) -> int:
+        try:
+            return self.session()
+        finally:
+            self.cleanup()
+
+    def session(self) -> int:
+        o = self.opts
+        kernel = flatten_kernel(read_file(o.kernel, "kernel"))
+        if len(kernel) > KERNEL_MAX:
+            raise ShimError("kernel is larger than 8 MB")
+        try:
+            self.fs_file = open(o.drive, "r+b")
+        except OSError as e:
+            raise ShimError(f"cannot open {o.drive} read-write: {e.strerror}")
+        self.fs_len = os.fstat(self.fs_file.fileno()).st_size
+        if self.fs_len == 0 or self.fs_len > FS_MAX:
+            raise ShimError("fs.img must be 1 byte to 64 MB")
+        try:
+            if o.gdb_port:
+                self.gdb_listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.gdb_listen.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.gdb_listen.bind(("127.0.0.1", o.gdb_port))
+                self.gdb_listen.listen(1)
+                self.gdb_listen.setblocking(False)
+        except OSError as e:
+            raise ShimError(f"cannot listen for gdb on 127.0.0.1:{o.gdb_port}: {e.strerror}")
+        self.agent = connect_agent()
+        self.feed = self.session_lines(kernel)
+        if self.stdin_tty:
+            if os.tcgetpgrp(0) == os.getpgrp():
+                self.tty_saved = termios.tcgetattr(0)
+                make_raw(0)
+            else:
+                # Started with `&` from a shell: touching the terminal (raw mode
+                # or a read) would stop us with SIGTTOU/SIGTTIN. No console input.
+                self.stdin_bg = True
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            signal.signal(sig, self.on_signal)
+        return self.loop()
+
+    def cleanup(self):
+        if self.tty_saved is not None:
+            # TCSANOW: TCSADRAIN would wait for the terminal to consume the output.
+            # Best effort: a failed restore must not replace the exit status.
+            try:
+                termios.tcsetattr(0, termios.TCSANOW, self.tty_saved)
+            except termios.error:
+                pass
+            self.tty_saved = None
+        for s in (self.agent, self.gdb_conn, self.gdb_listen):
+            if s is not None:
+                s.close()
+        if self.fs_file is not None:
+            self.fs_file.close()
+
+    def session_lines(self, kernel: bytes):
+        """begin, the kernel and fs chunks, run. Generated lazily: the fs can be 64 MB."""
+        gdb = 1 if self.opts.gdb_port else 0
+        wait = 1 if self.opts.halt else 0
+        # The sync field is sent only when on (a tty, the interactive case, keeps the old line).
+        sync = " 1" if self.sync_console else ""
+        yield f"x6 begin {RAM_MB} {gdb} {wait} {len(kernel)} {self.fs_len}{sync}\n".encode()
+        for off in range(0, len(kernel), CHUNK):
+            yield b"x6 kb " + b64(kernel[off:off + CHUNK]) + b"\n"
+        self.fs_file.seek(0)
+        left = self.fs_len
+        while left > 0:
+            block = self.fs_file.read(min(CHUNK, left))
+            if not block:
+                raise ShimError("fs.img shrank while it was being read")
+            left -= len(block)
+            yield b"x6 fb " + b64(block) + b"\n"
+        yield b"x6 run\n"
+
+    # ------------------------------------------------------------ loop
+
+    def loop(self) -> int:
+        while self.exit_code is None:
+            now = time.monotonic()
+            if os.getppid() != self.ppid or self.stop_requested:
+                self.request_stop()
+            if self.phase == "stopping" and self.stop_deadline is not None and now >= self.stop_deadline:
+                raise ShimError("xv6 did not report an exit after stop")
+            self.pump_feed()
+            if self.phase == "handshake":
+                if self.feed is None and not self.agent_out and self.handshake_deadline is None:
+                    self.handshake_deadline = now + HANDSHAKE_S
+                if self.handshake_deadline is not None and now >= self.handshake_deadline:
+                    raise ShimError("xiaonux page didn't answer (is this running in xiaonux?)")
+
+            rl = [self.agent]
+            wl = [self.agent] if self.agent_out else []
+            if self.phase == "live" and self.gdb_conn is not None:
+                rl.append(self.gdb_conn)
+            if self.phase == "live" and self.stdin_live():
+                rl.append(0)
+            if self.gdb_listen is not None:
+                rl.append(self.gdb_listen)
+            if self.gdb_conn is not None and self.gdb_out:
+                wl.append(self.gdb_conn)
+
+            timeout = POLL_S
+            for d in (self.handshake_deadline, self.stop_deadline, self.ack_at):
+                if d is not None:
+                    timeout = max(0.0, min(timeout, d - now))
+            r, w, _ = select.select(rl, wl, [], timeout)
+
+            if self.agent in r:
+                self.read_agent()
+            if 0 in r:
+                self.read_stdin()
+            if self.gdb_listen is not None and self.gdb_listen in r:
+                self.accept_gdb()
+            if self.gdb_conn is not None and self.gdb_conn in r:
+                self.read_gdb()
+            if self.agent in w:
+                self.flush_agent()
+            if self.gdb_conn is not None and self.gdb_conn in w:
+                self.flush_gdb()
+            # After the reads above: stdin that came in this wakeup is queued before the ack.
+            self.service_ack()
+        self.flush_held()
+        return self.exit_code
+
+    def stdin_live(self) -> bool:
+        return not self.stop_sent and not self.stdin_bg
+
+    def on_signal(self, signum, frame):
+        self.stop_requested = True
+
+    def pump_feed(self):
+        if self.feed is None:
+            return
+        while len(self.agent_out) < 512 * 1024:
+            try:
+                self.agent_out += next(self.feed)
+            except StopIteration:
+                self.feed = None
+                return
+
+    def queue(self, line: bytes):
+        self.agent_out += line + b"\n"
+
+    def request_stop(self):
+        if self.stop_sent:
+            return
+        self.stop_sent = True
+        if self.phase == "handshake":
+            # Nothing to tear down yet. The agent's disconnect tells the page to stop.
+            raise ShimError("interrupted before xv6 started")
+        self.phase = "stopping"
+        self.stop_deadline = time.monotonic() + EXIT_WAIT_S
+        self.queue(b"x6 stop")
+
+    # ------------------------------------------------------------ agent
+
+    def read_agent(self):
+        try:
+            data = self.agent.recv(65536)
+        except BlockingIOError:
+            return
+        if not data:
+            raise ShimError("lost the connection to xiaonux-agent")
+        self.agent_in += data
+        while True:
+            i = self.agent_in.find(b"\n")
+            if i < 0:
+                break
+            line = bytes(self.agent_in[:i]).decode("ascii", "replace").rstrip("\r")
+            del self.agent_in[:i + 1]
+            self.on_line(line)
+
+    def flush_agent(self):
+        try:
+            n = self.agent.send(self.agent_out)
+        except BlockingIOError:
+            return
+        del self.agent_out[:n]
+
+    def on_line(self, line: str):
+        if not line.startswith("x6 "):
+            return
+        op, _, arg = line[3:].partition(" ")
+        if op == "ready":
+            if self.phase == "handshake":
+                self.phase = "live"
+                self.handshake_deadline = None
+        elif op == "busy":
+            if self.phase == "handshake":
+                raise ShimError("another xv6 is running")
+        elif op == "err":
+            if self.phase == "handshake":
+                raise ShimError(arg or "xiaonux refused the machine")
+            print(f"qemu-system-riscv64: {arg}", file=sys.stderr)
+        elif op == "out":
+            data = decode(arg)
+            if data:
+                self.write_out(data)
+        elif op == "go":
+            data = decode(arg)
+            if data and self.gdb_conn is not None:
+                self.gdb_out += data
+        elif op == "fd":
+            off_s, _, payload = arg.partition(" ")
+            data = decode(payload)
+            if not off_s.isdigit() or data is None:
+                raise ShimError("bad fd line from xiaonux")
+            off = int(off_s)
+            if off + len(data) > self.fs_len:
+                raise ShimError("fd block is past the end of fs.img")
+            self.fs_file.seek(off)
+            self.fs_file.write(data)
+        elif op == "exit":
+            self.exit_code = int(arg) if arg.lstrip("-").isdigit() else 1
+            self.fs_file.flush()
+
+    # ------------------------------------------------------------ console
+
+    def read_stdin(self):
+        if self.stop_sent or self.phase != "live":
+            return
+        try:
+            data = os.read(0, 4096)
+        except OSError:
+            data = b""
+        if not data:  # EOF, or the terminal went away
+            self.request_stop()
+            return
+        quit_now = False
+        if self.stdin_tty:
+            data, quit_now = self.escape_filter(data)
+        if data:
+            self.send_console(data)
+        if quit_now:
+            self.request_stop()
+
+    def escape_filter(self, data: bytes):
+        """Returns (bytes to send, quit). Ctrl-A x quits; Ctrl-A Ctrl-A is one Ctrl-A;
+        other Ctrl-A keys pass through. Bytes before a quit are still sent."""
+        out = bytearray()
+        for b in data:
+            if self.escape:
+                self.escape = False
+                if b == ord("x"):
+                    return bytes(out), True
+                if b != 0x01:
+                    out.append(0x01)
+                out.append(b)
+            elif b == 0x01:
+                self.escape = True
+            else:
+                out.append(b)
+        return bytes(out), False
+
+    def send_console(self, data: bytes):
+        for off in range(0, len(data), CHUNK):
+            self.queue(b"x6 in " + b64(data[off:off + CHUNK]))
+
+    def write_out(self, data: bytes):
+        # A pipe reader (the MIT grader) sees QEMU's console a byte at a time,
+        # so a shell prompt and the text after it arrive in separate reads.
+        # gradelib's shell_script() relies on that: it clears its buffer on
+        # "$ " and matches only at the buffer's start, and it types the next
+        # script line on each prompt. So a write ends after each "$ ", and the
+        # page pauses xv6 right there (prompt sync) until we send `x6 ack`.
+        # The reader gets ACK_GAP to answer: input it types meanwhile is sent
+        # before the ack, so xv6 reads it while it runs again. Output after a
+        # prompt is held until the ack (xv6 may have printed more before it
+        # paused). A terminal gets its output as it comes, and no ack.
+        if self.stdout_tty:
+            self.write_all(data)
+            return
+        if self.ack_at is not None:
+            self.out_held += data
+            return
+        self.emit(data)
+
+    def emit(self, data: bytes):
+        # Writes data up to and including the first "$ ", and schedules the ack.
+        # A prompt can span two x6 lines, so the match includes the last byte
+        # written before this data.
+        prev = self.out_tail[-1:]
+        i = (prev + data).find(b"$ ")
+        if i < 0:
+            self.write_all(data)
+            self.out_tail = (self.out_tail + data)[-2:]
+            return
+        end = i + 2 - len(prev)
+        self.write_all(data[:end])
+        self.out_tail = b"$ "
+        self.out_held += data[end:]
+        self.ack_at = time.monotonic() + ACK_GAP
+
+    def service_ack(self):
+        # The gap after a prompt has passed: let xv6 run again, then write the held output.
+        if self.ack_at is None or time.monotonic() < self.ack_at:
+            return
+        self.ack_at = None
+        if self.stop_sent:
+            # Stopping: the machine is going away, so no ack. Write the rest as it is.
+            self.flush_held()
+            return
+        self.queue(b"x6 ack")
+        held = bytes(self.out_held)
+        self.out_held.clear()
+        if held:
+            self.emit(held)
+
+    def flush_held(self):
+        if self.out_held:
+            self.write_all(bytes(self.out_held))
+            self.out_held.clear()
+
+    def write_all(self, data: bytes):
+        view = memoryview(data)
+        try:
+            while view:
+                n = os.write(1, view)
+                view = view[n:]
+        except OSError:
+            # stdout closed or the terminal went away: stop the machine.
+            self.stop_requested = True
+
+    # ------------------------------------------------------------ gdb
+
+    def accept_gdb(self):
+        try:
+            conn, _ = self.gdb_listen.accept()
+        except BlockingIOError:
+            return
+        if self.gdb_conn is None:
+            conn.setblocking(False)
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.gdb_conn = conn
+        else:
+            conn.close()  # one client at a time
+
+    def read_gdb(self):
+        try:
+            data = self.gdb_conn.recv(65536)
+        except BlockingIOError:
+            return
+        except OSError:
+            data = b""
+        if not data:
+            # The client left. The stub's detach rules apply on the page.
+            self.gdb_conn.close()
+            self.gdb_conn = None
+            self.gdb_out.clear()
+            return
+        for off in range(0, len(data), CHUNK):
+            self.queue(b"x6 gi " + b64(data[off:off + CHUNK]))
+
+    def flush_gdb(self):
+        try:
+            n = self.gdb_conn.send(self.gdb_out)
+        except BlockingIOError:
+            return
+        except OSError:
+            self.gdb_conn.close()
+            self.gdb_conn = None
+            self.gdb_out.clear()
+            return
+        del self.gdb_out[:n]
+
+
+def decode(s: str):
+    try:
+        return base64.b64decode(s, validate=True)
+    except (ValueError, TypeError):
+        return None
+
+
+def read_file(path: str, what: str) -> bytes:
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError as e:
+        raise ShimError(f"cannot read {what} {path}: {e.strerror}")
+
+
+def connect_agent() -> socket.socket:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        s.connect(AGENT_SOCK)
+    except OSError as e:
+        s.close()
+        raise ShimError(f"cannot reach xiaonux-agent at {AGENT_SOCK} ({e.strerror}); is this running in xiaonux?")
+    s.setblocking(False)
+    return s
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    try:
+        o = parse_args(argv)
+        if o.action == "version":
+            print(VERSION)
+            return 0
+        if o.action == "help":
+            print(USAGE, end="")
+            return 0
+        if o.action == "machine-help":
+            print("virt            RISC-V VirtIO board (xiaonux xv6)")
+            return 0
+        if not o.kernel:
+            raise ShimError("no kernel: pass -kernel FILE")
+        if o.drive is None:
+            raise ShimError("no disk: xv6 needs -drive file=fs.img")
+        if o.halt and not o.gdb_port:
+            raise ShimError("-S needs -gdb in xiaonux")
+        if o.ram_mb is not None and o.ram_mb != RAM_MB:
+            print(f"qemu-system-riscv64: xiaonux runs xv6 with {RAM_MB} MB (ignoring -m {o.ram_mb})", file=sys.stderr)
+        if o.smp > 1:
+            print("qemu-system-riscv64: xiaonux runs xv6 on 1 CPU", file=sys.stderr)
+        return Shim(o).run()
+    except ShimError as e:
+        print(f"qemu-system-riscv64: {e}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
