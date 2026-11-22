@@ -399,6 +399,11 @@ onLocaleChange(() => statusDraw());
 let notSaved: Key | null = null;
 /** Set when the user's files are in the previous system version (the worker's 'disk-mode'). */
 let olderVersion: Key | null = null;
+/** The full explanation lives in a dismissible note under the bar; the status only says "Previous version". */
+const OLDER_NOTE_KEY = 'xiaonux.olderNote';
+const olderNote = $('older-note');
+$('older-hide').addEventListener('click', () => { olderNote.hidden = true; store.set(OLDER_NOTE_KEY, '0'); });
+$('older-reset').addEventListener('click', () => resetBtn.click());
 const RESET_REASONS: Record<string, Key> = {
   'other-tab': 'reset.reason.other-tab',
   unavailable: 'reset.reason.unavailable',
@@ -430,6 +435,7 @@ function workerFailed(w: Worker, message: string) {
 /** The guide checks refer to files that are now gone. Only after a reset really happened. */
 function resetDone() {
   store.set(LESSONS_DONE_KEY, '{}');
+  store.set(OLDER_NOTE_KEY, '1'); // a later image change should show the note again
   location.reload();
 }
 
@@ -447,7 +453,7 @@ function mark(name: string) {
         statusEl.title = t(notSaved);
       } else if (olderVersion) {
         statusEl.append(` · ${t(olderVersion)}`);
-        statusEl.title = t(olderVersion);
+        statusEl.title = t('note.older');
       }
     });
     statusEl.dataset.state = notSaved ? 'error' : 'ready';
@@ -631,6 +637,7 @@ function onWorker(m: FromWorker) {
     case 'disk-mode':
       notSaved = m.persistent ? null : m.reason === 'other-tab' ? 'status.notSaved' : 'status.notSavedNoStorage';
       olderVersion = m.current ? null : 'status.olderVersion';
+      olderNote.hidden = !olderVersion || store.get(OLDER_NOTE_KEY) === '0';
       if (notSaved) {
         // Show it now; "Ready in N s" re-applies it (see mark()).
         const key = notSaved;

@@ -403,6 +403,24 @@ a.wordmark { text-decoration: none; }
 .bar :focus-visible { outline-color: var(--accent); }
 .bar-btn svg, .keys svg, .tile-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
+.note {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  margin: var(--gap) var(--gap) 0; padding: 6px 6px 6px 12px;
+  background: var(--accent-wash); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--radius);
+  font: 13.5px/1.45 var(--sans);
+}
+.note[hidden] { display: none; }
+.note p { margin: 0; flex: 1; min-width: 0; text-wrap: pretty; }
+.note-btn {
+  flex: none; font: 600 13px/1 var(--sans); padding: 8px 12px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--tile); color: var(--ink);
+}
+.note-btn:hover { border-color: var(--focus); }
+.note-x { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--ink-2); cursor: pointer; }
+.note-x:hover { background: var(--tile); color: var(--ink); }
+.note-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.note-btn:focus-visible, .note-x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .work { flex: 1; min-height: 0; display: flex; position: relative; padding: var(--gap); }
 /* The signature: whichever tile holds the keyboard wears the ochre frame. */
 .work > .tile, .drawer .tile { border-width: 2px; transition: border-color 160ms var(--ease); }
