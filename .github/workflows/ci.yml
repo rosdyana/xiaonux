@@ -71,3 +71,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/wasm -o build/blk_range_test emu/wasm/test/blk_range_test.c && ./build/blk_range_test
       - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/tinyemu -o build/xsnap_test emu/wasm/test/xsnap_test.c && ./build/xsnap_test
+      - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/compat -Iemu/tinyemu -o build/xn_uart_test emu/wasm/test/xn_uart_test.c && ./build/xn_uart_test
+      - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/compat -Iemu/tinyemu -o build/xn_plic_test emu/wasm/test/xn_plic_test.c && ./build/xn_plic_test
+      - run: mkdir -p build && cc -std=c11 -Wall -Wextra -Werror -Iemu/compat -Iemu/tinyemu -o build/xn_gdb_test emu/wasm/test/xn_gdb_test.c && ./build/xn_gdb_test

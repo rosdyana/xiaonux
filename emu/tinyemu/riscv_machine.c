@@ -42,6 +42,9 @@
 #include "xn_jit.h"
 #include "virtio.h"
 #include "machine.h"
+#include "xn_uart.h" /* xiaonux: xv6-virt profile */
+#include "xn_plic.h" /* xiaonux: xv6-virt profile */
+#include "xn_gdb.h"  /* xiaonux: gdb stub (xv6-virt profile) */
 
 /* RISCV machine */
 
@@ -65,6 +68,16 @@ typedef struct RISCVMachine {
     VIRTIODevice *mouse_dev;
 
     int virtio_count;
+
+    /* xiaonux: xv6-virt profile (see riscv_xv6_machine_init). Appended last. */
+    BOOL xv6;
+    XNPlic *xplic;
+    XNUart *uart;
+    /* gdb stub (see riscv_machine_gdb_attach). Appended last. */
+    XNGdb *gdb;
+    int gdb_skip_bp;   /* the next instruction ignores a breakpoint (after a resume) */
+    /* prompt sync (xiaonux grading, see riscv_machine_console_sync). Appended last. */
+    int console_sync;
 } RISCVMachine;
 
 #define LOW_RAM_SIZE   0x00010000 /* 64KB */
@@ -862,10 +875,12 @@ static void copy_bios(RISCVMachine *s, const uint8_t *buf, int buf_len,
     
     fdt_addr = 0x1000 + 8 * 8;
 
-    riscv_build_fdt(s, ram_ptr + fdt_addr,
-                    RAM_BASE_ADDR + kernel_base, kernel_buf_len,
-                    RAM_BASE_ADDR + initrd_base, initrd_buf_len,
-                    cmd_line);
+    /* xiaonux: xv6 never reads the FDT, so the xv6-virt profile skips it */
+    if (!s->xv6)
+        riscv_build_fdt(s, ram_ptr + fdt_addr,
+                        RAM_BASE_ADDR + kernel_base, kernel_buf_len,
+                        RAM_BASE_ADDR + initrd_base, initrd_buf_len,
+                        cmd_line);
 
     /* jump_addr = 0x80000000 */
     
@@ -898,12 +913,76 @@ static void riscv_machine_set_defaults(VirtMachineParams *p)
 {
 }
 
+/* xiaonux: xv6-virt profile. The PLIC output drives the hart's MEIP/SEIP. */
+#define XV6_PLIC_BASE    0x0c000000
+#define XV6_UART_BASE    0x10000000
+#define XV6_UART_IRQ     10
+#define XV6_VIRTIO_BASE  0x10001000
+#define XV6_VIRTIO_IRQ   1
+#define XV6_VIRTIO_VENDOR 0x554d4551 /* "QEMU", as xv6 checks */
+
+static void xv6_plic_out(void *opaque, uint32_t mip_mask, int level)
+{
+    RISCVCPUState *cpu = opaque;
+
+    if (level)
+        riscv_cpu_set_mip(cpu, mip_mask);
+    else
+        riscv_cpu_reset_mip(cpu, mip_mask);
+}
+
+/* xiaonux: RAM and CLINT are already registered by riscv_machine_init. */
+static void riscv_xv6_machine_init(RISCVMachine *s, const VirtMachineParams *p)
+{
+    VIRTIOBusDef vbus_s, *vbus = &vbus_s;
+    int i;
+
+    if (p->eth_count || p->fs_count || p->display_device || p->input_device ||
+        p->drive_count > 1) {
+        vm_error("xv6-virt: only drive0 is supported (no net, 9p, display, "
+                 "input or extra drives)\n");
+        exit(1);
+    }
+    if (!p->files[VM_FILE_BIOS].buf) {
+        vm_error("No bios found");
+    }
+
+    riscv_cpu_set_ext(s->cpu_state, XN_EXT_XV6);
+
+    s->xplic = xn_plic_init(s->mem_map, XV6_PLIC_BASE, xv6_plic_out,
+                            s->cpu_state);
+    for (i = 1; i < 32; i++) {
+        irq_init(&s->plic_irq[i], xn_plic_set_irq, s->xplic, i);
+    }
+
+    s->uart = xn_uart_init(s->mem_map, XV6_UART_BASE,
+                           &s->plic_irq[XV6_UART_IRQ], p->console);
+    /* console_dev stays NULL: the front end never feeds a virtio console */
+    s->common.console = p->console;
+
+    if (p->drive_count > 0) {
+        memset(vbus, 0, sizeof(*vbus));
+        vbus->mem_map = s->mem_map;
+        vbus->addr = XV6_VIRTIO_BASE;
+        vbus->irq = &s->plic_irq[XV6_VIRTIO_IRQ];
+        vbus->vendor_id = XV6_VIRTIO_VENDOR;
+        virtio_block_init(vbus, p->tab_drive[0].block_dev);
+        s->virtio_count++;
+    }
+
+    copy_bios(s, p->files[VM_FILE_BIOS].buf, p->files[VM_FILE_BIOS].len,
+              p->files[VM_FILE_KERNEL].buf, p->files[VM_FILE_KERNEL].len,
+              p->files[VM_FILE_INITRD].buf, p->files[VM_FILE_INITRD].len,
+              p->cmdline);
+}
+
 static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
 {
     RISCVMachine *s;
     VIRTIODevice *blk_dev;
     int irq_num, i, max_xlen, ram_flags;
     VIRTIOBusDef vbus_s, *vbus = &vbus_s;
+    BOOL xv6 = FALSE; /* xiaonux */
 
 
     if (!strcmp(p->machine_name, "riscv32")) {
@@ -912,6 +991,9 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
         max_xlen = 64;
     } else if (!strcmp(p->machine_name, "riscv128")) {
         max_xlen = 128;
+    } else if (!strcmp(p->machine_name, "xv6-virt")) { /* xiaonux */
+        max_xlen = 64;
+        xv6 = TRUE;
     } else {
         vm_error("unsupported machine: %s\n", p->machine_name);
         return NULL;
@@ -921,6 +1003,7 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     s->common.vmc = p->vmc;
     s->ram_size = p->ram_size;
     s->max_xlen = max_xlen;
+    s->xv6 = xv6; /* xiaonux */
     s->mem_map = phys_mem_map_init();
     /* needed to handle the RAM dirty bits */
     s->mem_map->opaque = s;
@@ -949,6 +1032,11 @@ static VirtMachine *riscv_machine_init(const VirtMachineParams *p)
     
     cpu_register_device(s->mem_map, CLINT_BASE_ADDR, CLINT_SIZE, s,
                         clint_read, clint_write, DEVIO_SIZE32);
+    /* xiaonux: xv6-virt replaces the whole device block below */
+    if (s->xv6) {
+        riscv_xv6_machine_init(s, p);
+        return (VirtMachine *)s;
+    }
     cpu_register_device(s->mem_map, PLIC_BASE_ADDR, PLIC_SIZE, s,
                         plic_read, plic_write, DEVIO_SIZE32);
     for(i = 1; i < 32; i++) {
@@ -1073,6 +1161,30 @@ static void riscv_machine_end(VirtMachine *s1)
     free(s);
 }
 
+/* xiaonux: gdb stub. Registers and memory go through the CPU debug
+   accessors (RAM only, no device side effects). */
+static int gdb_reg_rw(void *t, int regno, uint64_t *val, int write)
+{
+    RISCVMachine *m = t;
+    return riscv_cpu_debug_reg(m->cpu_state, regno, val, write);
+}
+
+static int gdb_mem_rw(void *t, uint64_t addr, uint8_t *buf, int len, int write)
+{
+    RISCVMachine *m = t;
+    return riscv_cpu_debug_mem(m->cpu_state, addr, buf, len, write);
+}
+
+static void gdb_on_resume(void *t)
+{
+    RISCVMachine *m = t;
+    m->gdb_skip_bp = 1;
+}
+
+static const XNGdbTarget gdb_target_ops = {
+    gdb_reg_rw, gdb_mem_rw, gdb_on_resume
+};
+
 /* in ms */
 static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
 {
@@ -1093,15 +1205,175 @@ static int riscv_machine_get_sleep_duration(VirtMachine *s1, int delay)
                 delay = delay1;
         }
     }
+    /* xiaonux: xv6-virt polls the UART and wakes for the Sstc timer. The
+       front end only polls stdin when console_dev is set, so cap the sleep. */
+    if (m->xv6) {
+        int64_t t;
+        xn_uart_poll(m->uart);
+        t = riscv_cpu_sstc_poll(s);
+        if (t == 0) {
+            delay = 0;
+        } else if (t != INT64_MAX) {
+            delay1 = t / (RTC_FREQ / 1000);
+            if (delay1 < delay)
+                delay = delay1;
+        }
+        if (delay > 10)
+            delay = 10;
+    }
+    /* xiaonux: paused after "$ " under prompt sync: wait for the resume (the
+       UART is still polled above, so typed input is queued meanwhile). */
+    if (m->console_sync && xn_uart_paused(m->uart))
+        return 10;
+    /* xiaonux: halted under the gdb stub. No guest time passes, so poll for
+       debugger input (virt_machine_run selects on the gdb socket too). */
+    if (m->gdb && xn_gdb_halted(m->gdb))
+        return 10;
     if (!riscv_cpu_get_power_down(s))
         delay = 0;
     return delay;
 }
 
+/* xiaonux: runs n instructions. With prompt sync on, in chunks of at most
+   XN_SYNC_CHUNK, so a pause at "$ " takes effect within that many instructions.
+   Stops early at a pause or on wfi (the sleep logic then runs). Without prompt
+   sync this is one riscv_cpu_interp call, as before. */
+#define XN_SYNC_CHUNK 10000
+static void run_cpu(RISCVMachine *m, int n)
+{
+    RISCVCPUState *cpu = m->cpu_state;
+
+    if (!m->console_sync) {
+        riscv_cpu_interp(cpu, n);
+        return;
+    }
+    while (n > 0) {
+        int k = min_int(n, XN_SYNC_CHUNK);
+        riscv_cpu_interp(cpu, k);
+        n -= k;
+        if (xn_uart_paused(m->uart) || riscv_cpu_get_power_down(cpu))
+            break;
+    }
+}
+
+/* xiaonux: one slice with the gdb stub attached. Breakpoints and stepping
+   run one instruction per riscv_cpu_interp(cpu, 1) call with xn_step_mode
+   set (the JIT is bypassed in that mode). Otherwise the normal slice runs. */
+static void gdb_interp(RISCVMachine *m, int max_exec_cycle)
+{
+    RISCVCPUState *cpu = m->cpu_state;
+    XNGdb *g = m->gdb;
+    int stepping, n;
+
+    if (xn_gdb_killed(g)) {
+#ifndef EMSCRIPTEN
+        exit(0);   /* native: `k` ends temu */
+#else
+        return;    /* wasm: the front end sees vm_gdb_killed() */
+#endif
+    }
+    xn_step_mode = 0;
+    if (xn_gdb_halted(g))
+        return;
+    stepping = xn_gdb_stepping(g);
+    if (!stepping && !xn_gdb_has_breakpoints(g)) {
+        m->gdb_skip_bp = 0;
+        run_cpu(m, max_exec_cycle);
+        return;
+    }
+    xn_step_mode = 1;
+    for (n = 0; n < max_exec_cycle; n++) {
+        uint64_t pc;
+        riscv_cpu_debug_reg(cpu, 32, &pc, 0);
+        if (m->gdb_skip_bp) {
+            m->gdb_skip_bp = 0;
+        } else if (xn_gdb_breakpoint_at(g, pc)) {
+            xn_step_mode = 0;
+            xn_gdb_stop(g, 5);
+            return;
+        }
+        riscv_cpu_interp(cpu, 1);
+        if (stepping) {
+            xn_step_mode = 0;
+            xn_gdb_stop(g, 5);
+            return;
+        }
+        /* wfi, or a prompt-sync pause: let the sleep logic run */
+        if (riscv_cpu_get_power_down(cpu) || (m->console_sync && xn_uart_paused(m->uart)))
+            break;
+    }
+    xn_step_mode = 0;
+}
+
 static void riscv_machine_interp(VirtMachine *s1, int max_exec_cycle)
 {
     RISCVMachine *s = (RISCVMachine *)s1;
-    riscv_cpu_interp(s->cpu_state, max_exec_cycle);
+    /* xiaonux: paused after "$ " under prompt sync: run nothing until the resume */
+    if (s->console_sync && xn_uart_paused(s->uart))
+        return;
+    if (s->gdb) {
+        gdb_interp(s, max_exec_cycle);
+        return;
+    }
+    run_cpu(s, max_exec_cycle);
+}
+
+/* xiaonux: prompt sync for grading (xv6-virt only). With it on, the UART
+   pauses the machine right after the console transmits "$ " (see xn_uart.h),
+   until riscv_machine_console_resume. Returns -1 for other machines, else 0. */
+int riscv_machine_console_sync(VirtMachine *s1, int on)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (!m->xv6 || !m->uart)
+        return -1;
+    m->console_sync = on != 0;
+    xn_uart_set_prompt_sync(m->uart, on);
+    return 0;
+}
+
+/* xiaonux: the reader answered the prompt: run again (no-op for other machines). */
+void riscv_machine_console_resume(VirtMachine *s1)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (m->xv6 && m->uart)
+        xn_uart_resume(m->uart);
+}
+
+/* xiaonux: attaches the gdb stub. xv6-virt only: returns -1 for other
+   machines (and on allocation failure), 0 once attached. out receives the
+   reply bytes; start_halted leaves the machine halted until the client
+   sends c or s. */
+int riscv_machine_gdb_attach(VirtMachine *s1, int start_halted,
+                             void (*out)(void *o, const uint8_t *buf, int len),
+                             void *o)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+
+    if (!m->xv6 || m->gdb)
+        return -1;
+    m->gdb = xn_gdb_new(&gdb_target_ops, m, out, o);
+    if (!m->gdb)
+        return -1;
+    if (start_halted)
+        xn_gdb_halt_initial(m->gdb);
+    return 0;
+}
+
+/* xiaonux: bytes from the gdb client (no-op when not attached). */
+void riscv_machine_gdb_input(VirtMachine *s1, const uint8_t *buf, int len)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+    if (m->gdb)
+        xn_gdb_input(m->gdb, buf, len);
+}
+
+/* xiaonux: 1 after the client sent `k`. */
+int riscv_machine_gdb_killed(VirtMachine *s1)
+{
+    RISCVMachine *m = (RISCVMachine *)s1;
+    return m->gdb ? xn_gdb_killed(m->gdb) : 0;
 }
 
 static void riscv_vm_send_key_event(VirtMachine *s1, BOOL is_down,
@@ -1128,7 +1400,7 @@ static void riscv_vm_send_mouse_event(VirtMachine *s1, int dx, int dy, int dz,
 }
 
 const VirtMachineClass riscv_machine_class = {
-    "riscv32,riscv64,riscv128",
+    "riscv32,riscv64,riscv128,xv6-virt", /* xiaonux: xv6-virt added */
     riscv_machine_set_defaults,
     riscv_machine_init,
     riscv_machine_end,
@@ -1218,6 +1490,8 @@ static int riscv_machine_snapshot(RISCVMachine *m, XSnap *sn)
 int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen)
 {
     XSnap sn = { .saving = 1 };
+    if (((RISCVMachine *)s1)->xv6) /* xiaonux: no snapshots for xv6-virt */
+        return -1;
     if (riscv_machine_snapshot((RISCVMachine *)s1, &sn) < 0) {
         free(sn.buf);
         return -1;
@@ -1231,6 +1505,8 @@ int riscv_machine_snapshot_save(VirtMachine *s1, uint8_t **pbuf, size_t *plen)
 int riscv_machine_snapshot_load(VirtMachine *s1, const uint8_t *buf, size_t len)
 {
     XSnap sn = { .saving = 0, .buf = (uint8_t *)buf, .len = len };
+    if (((RISCVMachine *)s1)->xv6) /* xiaonux: no snapshots for xv6-virt */
+        return -1;
     return riscv_machine_snapshot((RISCVMachine *)s1, &sn);
 }
 

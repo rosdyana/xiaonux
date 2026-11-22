@@ -86,6 +86,22 @@ def emulator():
             ]}
 
 
+def xv6_source():
+    """xv6 sources shipped in the image as git bundles (image/xv6/build-content.sh)."""
+    path = os.path.join(LSRC, "xv6-manifest.json")
+    if not os.path.isfile(path):
+        sys.exit("missing build/licenses-src/xv6-manifest.json (run make rootfs first)")
+    repos = json.load(open(path))["repos"]
+    rv = repos["xv6-riscv"]["default_head"][:7]
+    branches = sum(len(r["branches"]) for r in repos.values())
+    return {"name": "xv6 (MIT 6.1810 labs and xv6-riscv)",
+            "version": f"xv6-riscv {rv}; MIT 6.1810 labs 2024-2026 ({branches} branches)",
+            "license": "MIT", "url": "https://github.com/mit-pdos/xv6-riscv",
+            "source": "https://github.com/mit-pdos/xv6-riscv",
+            "offer": "Shipped in the image at /usr/share/xv6 as git bundles of every branch of xv6-riscv and of the MIT 6.1810 lab repositories (xv6-labs-2024, -2025, -2026, cloned from git://g.csail.mit.edu), at the commits in /usr/share/xv6/manifest.json. Those bundles are the complete corresponding source.",
+            "text": text(read(LSRC, "xv6-LICENSE.xv6"))}
+
+
 def guest(v: dict[str, str]):
     kver = v.get("LINUX_VERSION", "")
     sbi = v.get("OPENSBI_VERSION", "")
@@ -97,6 +113,7 @@ def guest(v: dict[str, str]):
          "source": f"https://cdn.kernel.org/pub/linux/kernel/v{major}.x/linux-{kver}.tar.xz",
          "offer": "Built from the unmodified kernel.org release above with image/kernel.config and image/build-kernel.sh from the xiaonux repository. That source tarball, the config and the scripts are the complete corresponding source.",
          "text": text(read(LSRC, "linux-COPYING"))},
+        xv6_source(),
     ]}
 
 

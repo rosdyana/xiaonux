@@ -60,6 +60,8 @@ uint64_t riscv_machine_insn_count(VirtMachine *s1);
 
 /* blk_chunk.c */
 BlockDevice *blk_chunk_device(void);
+BlockDevice *blk_mem_device(uint8_t *buf, int64_t len);
+uint8_t *blk_mem_data(int64_t *plen);
 
 static uint8_t console_fifo[4096];
 static int console_fifo_windex;
@@ -277,6 +279,61 @@ EMSCRIPTEN_KEEPALIVE void vm_start(const char *url, int ram_size_mb,
     virt_machine_load_config_file(s->p, url, init_vm_drive, s);
 }
 
+/*
+ * xiaonux: boot the xv6-virt profile from bytes already in the WASM heap
+ * (the page runner's xv6 worker). Takes ownership of bios and disk, both
+ * malloc'd; they are freed here on every failure path. Not a general loader:
+ * only machine "xv6-virt", no config file, network, agent or snapshots.
+ */
+EMSCRIPTEN_KEEPALIVE int vm_start_mem(const char *machine, uint8_t *bios, int bios_len,
+                                      uint8_t *disk, int disk_len, int ram_mb)
+{
+    VirtMachineParams *p;
+    VirtMachine *m;
+
+    if (!machine || strcmp(machine, "xv6-virt") != 0 || global_vm ||
+        !bios || bios_len <= 0 || disk_len < 0 || ram_mb <= 0) {
+        free(bios);
+        free(disk);
+        return -1;
+    }
+    p = mallocz(sizeof(*p));
+    virt_machine_set_defaults(p);
+    p->machine_name = strdup(machine);
+    p->vmc = &riscv_machine_class;
+    p->ram_size = (uint64_t)ram_mb << 20;
+    p->rtc_real_time = TRUE;
+    /* virt_machine_free_config frees this buffer; RAM is a copy by then. */
+    p->files[VM_FILE_BIOS].buf = bios;
+    p->files[VM_FILE_BIOS].len = bios_len;
+    if (disk_len > 0) {
+        p->drive_count = 1;
+        p->tab_drive[0].block_dev = blk_mem_device(disk, disk_len);
+    } else {
+        free(disk);
+    }
+    p->console = console_init();
+
+    m = virt_machine_init(p);
+    virt_machine_free_config(p);
+    free(p);
+    if (!m)
+        return -1;
+    global_vm = m;
+    vm_on_ready(0);
+    return 0;
+}
+
+/* The disk as it is now (writes included), for JS to save back to fs.img. */
+EMSCRIPTEN_KEEPALIVE uint8_t *vm_mem_disk(int *plen)
+{
+    int64_t len = 0;
+    uint8_t *buf = blk_mem_data(&len);
+    if (plen)
+        *plen = (int)len;
+    return buf;
+}
+
 static void init_vm_drive(void *arg)
 {
     VMStartState *s = arg;
@@ -394,4 +451,55 @@ EMSCRIPTEN_KEEPALIVE int vm_run_slice(int max_cycles, int chunk_cycles)
     xn_jit_flush(); /* compile the blocks that became hot during this slice */
 #endif
     return delay;
+}
+
+/* xiaonux: gdb remote stub (xv6-virt). The JS side pumps bytes both ways:
+   gdb_input() for what the client sent, Module.onGdb for the replies. */
+int riscv_machine_gdb_attach(VirtMachine *s1, int start_halted,
+                             void (*out)(void *o, const uint8_t *buf, int len),
+                             void *o);
+void riscv_machine_gdb_input(VirtMachine *s1, const uint8_t *buf, int len);
+int riscv_machine_gdb_killed(VirtMachine *s1);
+extern void gdb_output(const uint8_t *buf, int len); /* lib.js */
+
+static void gdb_out(void *o, const uint8_t *buf, int len)
+{
+    gdb_output(buf, len);
+}
+
+/* returns 0 once attached, -1 if the VM isn't the xv6-virt machine */
+EMSCRIPTEN_KEEPALIVE int vm_gdb_attach(int start_halted)
+{
+    if (!global_vm)
+        return -1;
+    return riscv_machine_gdb_attach(global_vm, start_halted, gdb_out, NULL);
+}
+
+EMSCRIPTEN_KEEPALIVE void gdb_input(const uint8_t *buf, int len)
+{
+    if (global_vm)
+        riscv_machine_gdb_input(global_vm, buf, len);
+}
+
+/* 1 after the client sent `k`: the front end should stop the VM */
+EMSCRIPTEN_KEEPALIVE int vm_gdb_killed(void)
+{
+    return global_vm ? riscv_machine_gdb_killed(global_vm) : 0;
+}
+
+/* xiaonux: prompt sync (xv6-virt only). On: the machine pauses after the
+   console prints "$ " until vm_console_resume. Returns -1 for other machines. */
+int riscv_machine_console_sync(VirtMachine *s1, int on);
+void riscv_machine_console_resume(VirtMachine *s1);
+
+EMSCRIPTEN_KEEPALIVE int vm_console_sync(int on)
+{
+    return global_vm ? riscv_machine_console_sync(global_vm, on) : -1;
+}
+
+/* While paused, vm_run_slice returns a 10 ms delay, so the caller idles. */
+EMSCRIPTEN_KEEPALIVE void vm_console_resume(void)
+{
+    if (global_vm)
+        riscv_machine_console_resume(global_vm);
 }

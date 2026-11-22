@@ -23,7 +23,9 @@ export type ToWorker =
   | { type: 'net'; net: NetConfig }
   | { type: 'jit-export' }
   | { type: 'upload'; name: string; data: Uint8Array }
-  | { type: 'download'; path: string };
+  | { type: 'download'; path: string }
+  /** xv6 bridge: one x6 line from the shim (see xv6-bridge.ts), relayed through the agent */
+  | { type: 'x6'; line: string };
 
 export type FromWorker =
   | { type: 'console'; data: Uint8Array }
@@ -46,4 +48,33 @@ export type FromWorker =
   | { type: 'net'; status: 'connecting' | 'connected' | 'disconnected' | 'rotated'; mode: string; detail?: string }
   | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }
+  | { type: 'x6'; line: string }
+  | { type: 'error'; message: string };
+
+// Messages between the page and its xv6 worker (xv6.worker.ts). Two users:
+// the xv6 bridge (xv6-bridge.ts, `make qemu` in the guest, production) and the
+// window.xiaonuxXv6 test hook. The Debian VM (vm.worker.ts) never uses these.
+
+export type ToXv6Worker =
+  /** sync: pause after each "$ " on the console until a `resume` (grading; see xn_uart.h) */
+  | { type: 'start'; base: string; kernel: ArrayBuffer; fs: ArrayBuffer; jit?: boolean; gdb?: boolean; wait?: boolean; sync?: boolean }
+  /** test hook: text typed into the console (UTF-8) */
+  | { type: 'input'; data: string }
+  /** bridge: raw console bytes from the shim */
+  | { type: 'input-bytes'; data: Uint8Array }
+  /** bridge: raw bytes from the gdb client */
+  | { type: 'gdb-in'; data: Uint8Array }
+  /** bridge: the shim acknowledged a prompt pause (x6 ack); a no-op unless paused */
+  | { type: 'resume' }
+  | { type: 'stop' };
+
+export type FromXv6Worker =
+  | { type: 'ready'; ms: number }
+  | { type: 'console'; data: Uint8Array }
+  /** gdb stub replies (only after start with gdb) */
+  | { type: 'gdb'; data: Uint8Array }
+  | { type: 'stats'; mips: number }
+  /** the gdb client sent `k`: the machine is being stopped; `stopped` follows */
+  | { type: 'killed' }
+  | { type: 'stopped'; fs: ArrayBuffer }
   | { type: 'error'; message: string };

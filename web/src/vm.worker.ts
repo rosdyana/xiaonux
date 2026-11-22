@@ -259,6 +259,12 @@ function onAgent(bytes: Uint8Array) {
   while ((i = agentBuf.indexOf('\n')) >= 0) {
     const line = agentBuf.slice(0, i).trim();
     agentBuf = agentBuf.slice(i + 1);
+    // xv6 bridge lines (`x6 ...`, relayed by the agent from the shim) are never
+    // replies to an agent command: hand them to the page, before any matching.
+    if (line.startsWith('x6 ')) {
+      post({ type: 'x6', line });
+      continue;
+    }
     const [status, cmd] = line.split(' ');
     if (status === 'file' && download) {
       const [, size, sha] = line.split(' ');
@@ -344,8 +350,27 @@ async function downloadFile(path: string): Promise<Uint8Array> {
 // (the snapshot's CRNG state and clock are the same for everyone). Input stays
 // held (inputOpen) until the guest has taken a seed. If it never does, a cold
 // boot is the only way to a guest that doesn't share its random state.
+const newSeed = () => hex(crypto.getRandomValues(new Uint8Array(64)).buffer);
+
+/**
+ * Cold boot: the guest clock starts wrong (make would see files from the
+ * future) and the kernel's random pool is not seeded. Once the agent answers,
+ * set both. The prompt is not waiting for this.
+ */
+async function setClockAfterColdBoot() {
+  const deadline = performance.now() + 120_000;
+  while (!(await agentCommand('ping', 3000))) {
+    if (performance.now() > deadline) {
+      post({ type: 'log', message: 'agent did not answer after a cold boot; the clock is not set' });
+      return;
+    }
+  }
+  const okSeed = await agentCommand(`seed ${newSeed()}`, 15000);
+  const okTime = await agentCommand(`time ${Date.now()}`, 15000);
+  if (!okSeed || !okTime) post({ type: 'log', message: `agent: cold boot seed ${okSeed} time ${okTime}` });
+}
+
 async function afterRestore() {
-  const newSeed = () => hex(crypto.getRandomValues(new Uint8Array(64)).buffer);
   const seedWithRetry = async () =>
     (await agentCommand(`seed ${newSeed()}`, 15000)) || agentCommand(`seed ${newSeed()}`, 15000); // fresh seed for the retry
   const [okSeed, okTime] = await Promise.all([seedWithRetry(), agentCommand(`time ${Date.now()}`, 15000)]);
@@ -355,6 +380,9 @@ async function afterRestore() {
     post({ type: 'restart-cold' });
     return; // input stays closed; no 'restored'
   }
+  // A `make qemu` shim may still run from before a page reload, with no session
+  // here. Its agent connection gets this line and exits; with no client it's dropped.
+  if (okTime) agentWrite('x6 exit 1');
   inputOpen = true;
   const [cols, rows] = vm!.consoleSize;
   agentCommand(`size ${cols} ${rows}`);
@@ -501,6 +529,8 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       if (restored === 1) {
         inputOpen = false;
         afterRestore();
+      } else {
+        setClockAfterColdBoot();
       }
     },
   });
@@ -613,6 +643,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'save':
       saveNow(m.reason);
+      break;
+    case 'x6':
+      // The xv6 bridge's reply for the shim (see xv6-bridge.ts); the agent relays it.
+      agentWrite(m.line);
       break;
     case 'upload':
       uploadFile(m.name, m.data).then(

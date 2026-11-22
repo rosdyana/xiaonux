@@ -5,7 +5,8 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import './style.css';
-import type { FromWorker, NetConfig, ToWorker } from './protocol';
+import type { FromWorker, FromXv6Worker, NetConfig, ToWorker, ToXv6Worker } from './protocol';
+import { X6Bridge, type XvEvents, type XvHandle, type XvStart } from './xv6-bridge';
 import { initGuides, LESSONS, LESSONS_DONE_KEY, lessonProgress } from './ui/guides';
 import { renderHelperFiles } from './ui/helper';
 import { applyDom, mountPickers, onLocaleChange, t, type Key } from './i18n';
@@ -129,6 +130,50 @@ for (const ev of ['transitionend', 'transitioncancel'] as const) {
 
 let worker: Worker | null = null;
 const send = (m: ToWorker, transfer: Transferable[] = []) => worker?.postMessage(m, transfer);
+
+// `make qemu` in the guest: the shim's x6 lines arrive through the Debian worker
+// (onWorker 'x6'), and the xv6 machine runs in its own worker, made on the first
+// `x6 begin` (see xv6-bridge.ts). The Debian VM's restarts and resets kill it.
+const xv6Bridge = new X6Bridge({
+  send: (line) => send({ type: 'x6', line }),
+  start: startXv6Machine,
+  log: (message) => console.info(`[xiaonux] ${message}`),
+});
+function startXv6Machine(opts: XvStart, ev: XvEvents): XvHandle {
+  const w = new Worker(new URL('./xv6.worker.ts', import.meta.url), { type: 'module' });
+  w.onmessage = (e: MessageEvent<FromXv6Worker>) => {
+    const m = e.data;
+    switch (m.type) {
+      case 'console': ev.console(m.data); break;
+      case 'gdb': ev.gdb(m.data); break;
+      case 'ready': ev.ready(); break;
+      case 'killed': ev.killed(); break;
+      case 'stopped': ev.stopped(new Uint8Array(m.fs)); break;
+      case 'error': ev.error(m.message); break;
+      case 'stats': break;
+    }
+  };
+  w.onerror = (e) => ev.error(e.message || 'the xv6 worker failed');
+  const kernel = opts.kernel.buffer as ArrayBuffer;
+  const fs = opts.fs.buffer as ArrayBuffer;
+  const msg: ToXv6Worker = {
+    type: 'start',
+    base: new URL('.', new URL(BOOT_URL, location.href)).href,
+    kernel,
+    fs,
+    gdb: opts.gdb,
+    wait: opts.wait,
+    sync: opts.sync,
+  };
+  w.postMessage(msg, [kernel, fs]);
+  return {
+    input: (data) => w.postMessage({ type: 'input-bytes', data } satisfies ToXv6Worker),
+    gdbIn: (data) => w.postMessage({ type: 'gdb-in', data } satisfies ToXv6Worker),
+    resume: () => w.postMessage({ type: 'resume' } satisfies ToXv6Worker),
+    stop: () => w.postMessage({ type: 'stop' } satisfies ToXv6Worker),
+    terminate: () => w.terminate(),
+  };
+}
 const encoder = new TextEncoder();
 const type = (s: string) => {
   const data = encoder.encode(s);
@@ -373,6 +418,7 @@ function resetFailed(reason: string) {
 
 /** A worker failed to start or died: show why, drop it, and let Start and Reset be used again. */
 function workerFailed(w: Worker, message: string) {
+  xv6Bridge.kill();
   w.terminate();
   if (worker === w) worker = null; // else boot() would return early
   setStatus('status.error', { message: message || 'the machine failed to start' });
@@ -481,6 +527,7 @@ for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-home]')) {
 async function boot(forceCold = false) {
   showWorkspace();
   if (worker) return;
+  xv6Bridge.kill();
   if (netPrefs.mode === 'relay' && RELAY_URL) await ensureRelaySession();
   bootBtn.disabled = true;
   tBoot = performance.now();
@@ -529,6 +576,7 @@ function onWorker(m: FromWorker) {
       if (!m.agentOk) console.warn('[xiaonux] guest agent did not set the clock');
       break;
     case 'restart-cold':
+      xv6Bridge.kill();
       worker?.terminate();
       worker = null;
       boot(true);
@@ -602,6 +650,9 @@ function onWorker(m: FromWorker) {
       break;
     case 'log':
       console.info(`[xiaonux] ${m.message}`);
+      break;
+    case 'x6':
+      xv6Bridge.onLine(m.line);
       break;
     case 'error':
       setStatus('status.error', { message: m.message });
@@ -722,6 +773,7 @@ resetDlg.addEventListener('close', () => {
   if (resetDlg.returnValue !== 'reset') { term.focus(); return; }
   resetBtn.disabled = true;
   setStatus('status.resetting');
+  xv6Bridge.kill();
   if (!worker) {
     const w = new Worker(new URL('./vm.worker.ts', import.meta.url), { type: 'module' });
     worker = w;
@@ -764,4 +816,69 @@ if (TEST_HOOKS) {
     return lines.join('\n');
   };
   (window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = type;
+
+  // xv6 page runner (bench/xv6-browser.mjs). The worker exists only after
+  // start() is called; the page itself never starts it.
+  let xv6: Worker | null = null;
+  let xv6Text = '';
+  let xv6Ready: number | null = null;
+  let xv6Mips = 0;
+  let xv6Stopped: ((fs: Uint8Array) => void) | null = null;
+  const xv6Utf8 = new TextDecoder();
+  const b64Bytes = (b64: string): ArrayBuffer => {
+    const s = atob(b64);
+    const u = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+    return u.buffer;
+  };
+  (window as unknown as { xiaonuxXv6: unknown }).xiaonuxXv6 = {
+    start(kernelB64: string, fsB64: string, jit = true): void {
+      if (xv6) throw new Error('xv6 already running');
+      xv6Text = '';
+      xv6Ready = null;
+      xv6Mips = 0;
+      const kernel = b64Bytes(kernelB64);
+      const fs = b64Bytes(fsB64);
+      const w = new Worker(new URL('./xv6.worker.ts', import.meta.url), { type: 'module' });
+      xv6 = w;
+      w.onmessage = (e: MessageEvent<FromXv6Worker>) => {
+        const m = e.data;
+        if (m.type === 'console') xv6Text += xv6Utf8.decode(m.data, { stream: true });
+        else if (m.type === 'ready') xv6Ready = m.ms;
+        else if (m.type === 'stats') xv6Mips = m.mips;
+        else if (m.type === 'stopped') {
+          if (xv6 === w) xv6 = null;
+          xv6Stopped?.(new Uint8Array(m.fs));
+          xv6Stopped = null;
+        } else if (m.type === 'error') xv6Text += `\n[xv6 error] ${m.message}\n`;
+      };
+      w.onerror = (e) => { xv6Text += `\n[xv6 worker] ${e.message}\n`; };
+      const base = new URL('.', new URL(BOOT_URL, location.href)).href;
+      const msg: ToXv6Worker = { type: 'start', base, kernel, fs, jit };
+      w.postMessage(msg, [kernel, fs]);
+    },
+    type(s: string): void {
+      if (!xv6) throw new Error('xv6 not running');
+      const msg: ToXv6Worker = { type: 'input', data: s };
+      xv6.postMessage(msg);
+    },
+    screen(): string {
+      return xv6Text;
+    },
+    ready(): number | null {
+      return xv6Ready;
+    },
+    mips(): number {
+      return xv6Mips;
+    },
+    stop(): Promise<Uint8Array> {
+      const w = xv6;
+      if (!w) return Promise.reject(new Error('xv6 not running'));
+      return new Promise((resolve) => {
+        xv6Stopped = resolve;
+        const msg: ToXv6Worker = { type: 'stop' };
+        w.postMessage(msg);
+      });
+    },
+  };
 }
