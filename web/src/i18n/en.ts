@@ -166,6 +166,7 @@ const strings = {
   'status.error': 'Error: {message}',
   'status.notSaved': "Changes in this tab won't be saved: xiaonux is open in another tab.",
   'status.notSavedNoStorage': "Changes won't be saved: this browser doesn't allow storage here (private window?).",
+  'status.olderVersion': 'Running the previous system version so your files are kept. To get the new one, download what you need, then Reset.',
   'status.resetFailed': "Reset didn't happen: {reason}",
   'reset.reason.other-tab': 'close the other xiaonux tab first',
   'reset.reason.unavailable': 'this browser has no saved changes to delete',

@@ -34,14 +34,51 @@ ap.add_argument("--login", default="root:root")
 ap.add_argument("--block-kb", type=int, default=256)
 ap.add_argument("--wasm-dir", default=os.path.join(REPO, "build/wasm"))
 ap.add_argument("--out", default=os.path.join(REPO, "dist/vm"))
+ap.add_argument("--keep-manifest", action="append", metavar="NAME",
+                help="also keep this disk manifest as a previous image (repeatable); "
+                     "use it when the live site names a manifest that differs from boot.json")
 a = ap.parse_args()
+
+# Returning users' overlays are named by the manifest they were written
+# against, so the manifests of recent images stay on the site and in boot.json
+# (plan 014). Newest first; older ones are dropped and deleted on the next run.
+MAX_PREVIOUS = 5
+
+def previous_candidates(old_boot, keep):
+    """Manifest names that may still be served: `keep` first (what the live
+    site names), then the last boot.json's disk and its previous list."""
+    names = list(keep)
+    if old_boot:
+        names.append(old_boot.get("disk"))
+        names += old_boot.get("previous", [])
+    return list(dict.fromkeys(m for m in names if m))
+
+def check_manifests(out, names):
+    """Fail before anything is deleted if a kept manifest can't be served."""
+    for m in names:
+        path = os.path.join(out, m)
+        if not os.path.isfile(path):
+            sys.exit(f"previous manifest {m} is missing from {out}")
+        with open(path) as f:
+            hashes = json.load(f)["hashes"]
+        missing = [h for h in hashes if not os.path.isfile(os.path.join(out, "chunks", h + ".br"))]
+        if missing:
+            sys.exit(f"previous manifest {m} needs {len(missing)} chunks missing from "
+                     f"{out}/chunks, e.g. {missing[0]}")
 
 out = a.out
 os.makedirs(out, exist_ok=True)
+old_boot = None
+if os.path.isfile(os.path.join(out, "boot.json")):
+    with open(os.path.join(out, "boot.json")) as f:
+        old_boot = json.load(f)
+previous = previous_candidates(old_boot, a.keep_manifest or []) if a.format == "chunks" else []
+check_manifests(out, previous)
 # Remove everything but the chunk store, the wheel index, the helper downloads
-# (helper/release.sh) and the license list (tools/licenses/gen.py).
+# (helper/release.sh), the license list (tools/licenses/gen.py) and the
+# previous disk manifests.
 for name in os.listdir(out):
-    if name in ("chunks", "pypi", "helper", "licenses.json"):
+    if name in ("chunks", "pypi", "helper", "licenses.json") or name in previous:
         continue
     p = os.path.join(out, name)
     shutil.rmtree(p) if os.path.isdir(p) else os.unlink(p)
@@ -101,6 +138,8 @@ if a.format == "chunks":
     info = json.loads(r.stdout)
     summary.update(info)
     boot = {"cfg": "xiaonux.cfg", "disk": info["manifest"]}
+    # Never the current manifest: a restage of the same image must not list it.
+    boot["previous"] = [m for m in previous if m != info["manifest"]][:MAX_PREVIOUS]
     if snapshot:
         boot["snapshot"] = snapshot
     drive_file = info["manifest"]

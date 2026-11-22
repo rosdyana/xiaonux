@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 // Runs TinyEMU (WASM) and its main loop. The page only draws the terminal.
 import type { FromWorker, NetConfig, ToWorker } from './protocol';
-import { ChunkDisk, looksLikeHtml, type DiskModule } from './disk';
+import { ChunkDisk, looksLikeHtml, overlayHasData, type DiskModule } from './disk';
+import { overlayId, pickDisk } from './overlay-pick';
 import { NetStack } from './net/stack';
 import { noExit, type Exit } from './net/exit';
 import { WispExit } from './net/wisp';
@@ -168,11 +169,14 @@ function wake() {
 // boot.json: {
 //   cfg: "xiaonux.cfg",                  cold boot (kernel + disk)
 //   disk: "disk-<sha256>.json",          chunked disk manifest
+//   previous?: ["disk-<sha256>.json"],   older images, newest first: a returning
+//                                        user's files may still be in one of them
 //   snapshot?: { file: "snap-<sha256>.br", raw: <bytes>, cfg: "snap.cfg" }
 // }  The snapshot was saved against exactly this disk.
 interface BootDesc {
   cfg: string;
   disk?: string;
+  previous?: string[];
   snapshot?: { file: string; raw: number; cfg: string };
   /** chunks the first commands need: [hash, offset, length] into file */
   prefetch?: { file: string; index: [string, number, number][] };
@@ -460,6 +464,9 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     fetch(bootAbs, { cache: 'no-cache' }).then((r) => r.json() as Promise<BootDesc>),
     import(/* @vite-ignore */ `${base}xemu.mjs`),
   ]);
+  // The user's files are in an older image (BootDesc.previous): the shipped
+  // snapshot and prefetch bundle belong to the current one. Set before onReady.
+  let olderImage = false;
   const mod: Xemu = await createXemu({
     locateFile: (p: string) => base + p,
     baseUrl: base,
@@ -486,7 +493,7 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
       yieldNow();
       if (desc.jit && jit && !jitCheck) setTimeout(() => preloadJit(base, desc.jit!).catch((e) => post({ type: 'log', message: `jit preload: ${e}` })), 0);
       // Warm the chunks the first commands will need, without delaying the prompt.
-      if (desc.prefetch && disk && !record) {
+      if (desc.prefetch && disk && !record && !olderImage) {
         const d = disk;
         const pf = desc.prefetch;
         setTimeout(() => d.prefetchBundle(pf.file, pf.index).then((n) => n && post({ type: 'log', message: `prefetched ${(n / 2 ** 20).toFixed(1)} MB` })), 50);
@@ -518,11 +525,21 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
   let cfg = desc.cfg;
   let userSnap: Uint8Array | null = null;
   if (desc.disk) {
-    disk = await ChunkDisk.load(mod, base, desc.disk, (msg) => post({ type: 'log', message: msg }));
+    // Boot the newest image that holds the user's files (the current one when
+    // none does). Reset always works on the current image: it removes the rest.
+    const previous = desc.previous ?? [];
+    const withData = new Set<string>();
+    for (const m of [desc.disk, ...previous]) {
+      if (await overlayHasData(overlayId(m))) withData.add(overlayId(m));
+    }
+    const pick = resetOnly ? { manifest: desc.disk, isCurrent: true } : pickDisk(desc.disk, previous, (id) => withData.has(id));
+    olderImage = !pick.isCurrent;
+    if (olderImage) post({ type: 'log', message: `using your files on the previous system version (${overlayId(pick.manifest)})` });
+    disk = await ChunkDisk.load(mod, base, pick.manifest, (msg) => post({ type: 'log', message: msg }));
     mod.disk = disk;
     disk.onWrite = scheduleSave;
     disk.record = record;
-    post({ type: 'disk-mode', persistent: disk.persistence === 'opfs', reason: disk.persistence });
+    post({ type: 'disk-mode', persistent: disk.persistence === 'opfs', reason: disk.persistence, current: !olderImage });
     if (resetOnly) {
       // Without the storage files there is nothing here to delete: say so
       // rather than report a reset that cleared an in-memory disk.
@@ -546,7 +563,7 @@ async function start(bootUrl: string, ramMb: number, cmdline: string, resetOnly 
     mod._vm_set_snapshot_raw(p, userSnap.length); // C owns p now
     if (desc.snapshot) cfg = desc.snapshot.cfg;
     post({ type: 'log', message: `resuming your saved machine (${(userSnap.length / 2 ** 20).toFixed(1)} MB)` });
-  } else if (desc.snapshot && !forceCold && !disk?.hasUserData) {
+  } else if (desc.snapshot && !forceCold && !disk?.hasUserData && !olderImage) {
     const snap = await fetchCached(base + desc.snapshot.file);
     const p = mod._malloc(snap.length);
     mod.HEAPU8.set(snap, p);
