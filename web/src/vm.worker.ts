@@ -250,6 +250,48 @@ function agentWrite(line: string) {
   wake();
 }
 
+// Extra shells (tabs). Their bytes travel as base64 inside `t` lines.
+const TAB_IN_CHUNK = 2048; // raw bytes per `t in` line
+const tabResizeTimers = new Map<number, ReturnType<typeof setTimeout>>();
+function b64Encode(bytes: Uint8Array): string {
+  let bin = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  return btoa(bin);
+}
+function b64Decode(s: string): Uint8Array {
+  const bin = atob(s);
+  const b = new Uint8Array(bin.length);
+  for (let k = 0; k < bin.length; k++) b[k] = bin.charCodeAt(k);
+  return b;
+}
+
+/** Agent -> page `t` lines: `t out <id> <b64>`, `t exit <id> <status>`, `t opened <id>`, `t error <id> <reason>`, `t ready <max>`. */
+function onTabLine(line: string) {
+  const [, verb, idText, rest] = line.split(' ');
+  if (verb === 'ready') {
+    post({ type: 'tabs', max: Number(idText) });
+    return;
+  }
+  const id = Number(idText);
+  if (!Number.isInteger(id)) return;
+  switch (verb) {
+    case 'out': {
+      const data = b64Decode(rest ?? '');
+      post({ type: 'tab-out', id, data }, [data.buffer]);
+      break;
+    }
+    case 'exit':
+      post({ type: 'tab-exit', id, status: Number(rest) });
+      break;
+    case 'opened':
+      post({ type: 'tab-opened', id });
+      break;
+    case 'error':
+      post({ type: 'tab-error', id, reason: rest ?? 'error' });
+      break;
+  }
+}
+
 interface Download { size: number; sha: string; parts: Uint8Array[]; got: number; resolve: (b: Uint8Array) => void; reject: (e: Error) => void }
 let download: Download | null = null;
 
@@ -263,6 +305,16 @@ function onAgent(bytes: Uint8Array) {
     // replies to an agent command: hand them to the page, before any matching.
     if (line.startsWith('x6 ')) {
       post({ type: 'x6', line });
+      continue;
+    }
+    // Extra shells (`t ...`): the page's tab lines and their replies, never waiter matches.
+    if (line.startsWith('t ')) {
+      onTabLine(line);
+      continue;
+    }
+    // An agent older than tabs: no `t` support, so no "+" button.
+    if (line === 'err t unknown') {
+      post({ type: 'tabs', max: 0 });
       continue;
     }
     const [status, cmd] = line.split(' ');
@@ -365,6 +417,7 @@ async function setClockAfterColdBoot() {
       return;
     }
   }
+  agentWrite('t reset'); // probe for tabs; close any shells left in the snapshot
   const okSeed = await agentCommand(`seed ${newSeed()}`, 15000);
   const okTime = await agentCommand(`time ${Date.now()}`, 15000);
   if (!okSeed || !okTime) post({ type: 'log', message: `agent: cold boot seed ${okSeed} time ${okTime}` });
@@ -383,6 +436,7 @@ async function afterRestore() {
   // A `make qemu` shim may still run from before a page reload, with no session
   // here. Its agent connection gets this line and exits; with no client it's dropped.
   if (okTime) agentWrite('x6 exit 1');
+  if (okTime) agentWrite('t reset'); // probe for tabs; close any shells left in the snapshot
   inputOpen = true;
   const [cols, rows] = vm!.consoleSize;
   agentCommand(`size ${cols} ${rows}`);
@@ -647,6 +701,26 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'x6':
       // The xv6 bridge's reply for the shim (see xv6-bridge.ts); the agent relays it.
       agentWrite(m.line);
+      break;
+    case 'tab-open':
+      agentWrite(`t open ${m.id} ${m.cols} ${m.rows}`);
+      break;
+    case 'tab-input':
+      for (let o = 0; o < m.data.length; o += TAB_IN_CHUNK) agentWrite(`t in ${m.id} ${b64Encode(m.data.subarray(o, o + TAB_IN_CHUNK))}`);
+      break;
+    case 'tab-resize': {
+      const { id, cols, rows } = m;
+      clearTimeout(tabResizeTimers.get(id));
+      tabResizeTimers.set(id, setTimeout(() => {
+        tabResizeTimers.delete(id);
+        agentWrite(`t size ${id} ${cols} ${rows}`);
+      }, 100));
+      break;
+    }
+    case 'tab-close':
+      clearTimeout(tabResizeTimers.get(m.id));
+      tabResizeTimers.delete(m.id);
+      agentWrite(`t close ${m.id}`);
       break;
     case 'upload':
       uploadFile(m.name, m.data).then(

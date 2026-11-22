@@ -23,13 +23,17 @@ export function lessonProgress(): Record<string, number[]> {
 
 export interface Guides {
   show(id: string): void;
-  /** the visitor pressed Enter in the terminal */
-  onEnter(): void;
-  /** the shell printed a prompt */
-  onPrompt(): void;
+  /** the visitor pressed Enter in terminal tab `tab` (0 = the console) */
+  onEnter(tab: number): void;
+  /** the shell in terminal tab `tab` printed a prompt */
+  onPrompt(tab: number): void;
 }
 
-export function initGuides(type: (s: string) => void): Guides {
+/**
+ * `type` writes a command into the active terminal tab and returns that tab's id,
+ * so a step is only ticked by a prompt in the tab its command went to.
+ */
+export function initGuides(type: (s: string) => number): Guides {
   const select = document.getElementById('lesson-select') as HTMLSelectElement;
   const intro = document.getElementById('lesson-intro')!;
   const list = document.getElementById('lesson-steps')!;
@@ -47,8 +51,10 @@ export function initGuides(type: (s: string) => void): Guides {
   };
   const done = lessonProgress();
   let lesson = LESSONS[0];
-  let typed: number | null = null;   // step whose command is in the input line
-  let running: number | null = null; // step submitted with Enter, waiting for a prompt
+  // step whose command is in a tab's input line, and the step submitted with Enter
+  // (waiting for a prompt in that same tab)
+  let typed: { i: number; tab: number } | null = null;
+  let running: { i: number; tab: number } | null = null;
 
   const fillSelect = () => {
     select.replaceChildren(...LESSONS.map((l) => new Option(lessonText(l).title, l.id)));
@@ -108,8 +114,8 @@ export function initGuides(type: (s: string) => void): Guides {
         btn.className = 'btn btn-quiet btn-small';
         btn.textContent = t('guides.typeIt');
         btn.addEventListener('click', () => {
-          type('\x15' + s.cmd); // Ctrl-U clears whatever was half-typed
-          typed = i;
+          const tab = type('\x15' + s.cmd); // Ctrl-U clears whatever was half-typed
+          typed = { i, tab };
         });
         row.append(code, btn);
         body.append(row);
@@ -123,12 +129,12 @@ export function initGuides(type: (s: string) => void): Guides {
   show(lesson.id);
   return {
     show,
-    onEnter() {
-      if (typed !== null) { running = typed; typed = null; }
+    onEnter(tab) {
+      if (typed !== null && typed.tab === tab) { running = typed; typed = null; }
     },
-    onPrompt() {
-      if (running === null) return;
-      const i = running;
+    onPrompt(tab) {
+      if (running === null || running.tab !== tab) return;
+      const { i } = running;
       running = null;
       setDone(i, true, true);
       const next = list.children[i + 1] as HTMLElement | undefined;

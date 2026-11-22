@@ -1,7 +1,7 @@
 # Checks on every push and pull request: the page builds, the relay
-# typechecks and passes its unit tests, the network helper compiles, passes clippy and its tests, and the
-# native C unit tests for the emulator (disk-range check and snapshot buffer)
-# pass.
+# typechecks and passes its unit tests, the network helper compiles, passes clippy and its tests, the
+# guest agent's protocol tests pass, and the native C unit tests for the emulator (disk-range check
+# and snapshot buffer) pass.
 # The emulator build, guest image and browser tests need local toolchains
 # (Emscripten, a Linux VM, a built dist/vm) and aren't run here.
 name: ci
@@ -64,6 +64,12 @@ jobs:
         working-directory: helper
       - run: cargo test --locked
         working-directory: helper
+
+  guest-agent:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 image/guest/test_agent.py -v
 
   emu-native:
     runs-on: ubuntu-24.04

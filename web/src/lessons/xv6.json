@@ -11,12 +11,14 @@
     { "text": "A user program is a C file in <code>user/</code>. Read <code>echo.c</code>: your first exercise, <code>sleep</code>, looks much like it.", "cmd": "cat user/echo.c" },
     { "text": "New programs are added to <code>UPROGS</code> in the Makefile. Write <code>user/sleep.c</code> with <code>nano</code>, then add <code>$U/_sleep</code> here.", "cmd": "grep -n '_echo' Makefile" },
     { "text": "Run the grader for one test. It fails until <code>sleep</code> works, and tells you why.", "cmd": "./grade-lab-util sleep" },
-    { "text": "Debug the kernel. Start xv6 waiting for a debugger, in the background, with its console going to a log file.", "cmd": "make qemu-gdb > qgdb.log 2>&1 &" },
-    { "text": "Attach gdb and stop at the kernel's <code>main</code>.", "cmd": "gdb -q -nx -ex 'set confirm off' -ex 'set architecture riscv:rv64' -ex \"target remote 127.0.0.1:$(make -s print-gdbport)\" -ex 'symbol-file kernel/kernel' -ex 'break main' -ex continue" },
+    { "text": "Debug the kernel: start xv6 waiting for a debugger. Tick this step when it says <em>Now run gdb</em>.", "cmd": "make qemu-gdb" },
+    { "text": "Open a second shell with <b>+</b> above the terminal." },
+    { "text": "In the new tab, attach gdb and stop at the kernel's <code>main</code>. No <b>+</b> button? Press Reset to get the version with tabs.", "cmd": "cd ~/xv6-labs-2026 && gdb -q -nx -ex 'set confirm off' -ex 'set architecture riscv:rv64' -ex \"target remote 127.0.0.1:$(make -s print-gdbport)\" -ex 'symbol-file kernel/kernel' -ex 'break main' -ex continue" },
     { "text": "Where are we? Show the call stack.", "cmd": "bt" },
     { "text": "Step over a few lines of <code>main</code>.", "cmd": "next 3" },
     { "text": "Stop xv6 and leave gdb.", "cmd": "kill" },
     { "text": "Quit gdb.", "cmd": "quit" },
+    { "text": "Back in the console tab, xv6 has stopped and the prompt is back." },
     { "text": "Other labs are branches: <code>syscall</code>, <code>pgtbl</code>, <code>traps</code>, <code>cow</code>, <code>mmap</code>. Commit your work before you switch. More help: <code>cat ~/xv6-README.txt</code>.", "cmd": "git branch -a" }
   ]
 }

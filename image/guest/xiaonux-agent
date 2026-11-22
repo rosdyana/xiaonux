@@ -22,13 +22,43 @@ not commands. Lines from /dev/hvc1 go to the one client connected to
 connected. Lines from that client go to /dev/hvc1 unchanged. The agent never
 looks inside them (the page and the shim own the protocol). A second client
 gets "x6 busy" and is closed. When the client goes away the agent sends
-"x6 stop" to the page, which stops the machine.
+"x6 stop" to the page, which stops the machine. The socket client only ever
+sees and sends "x6 " lines: "t " lines from it are dropped, and "t out" lines
+are never sent to it.
+
+Tabs (up to 8 login shells, each on its own pty): lines starting with "t " are
+not commands either. The page sends:
+  t reset                    close every tab shell; "t ready 8" once they are gone
+  t open <id> <cols> <rows>  start bash -l on a new pty: "t opened <id>", or
+                             "t error <id> <reason>" (full, busy, bad, or an
+                             exception name)
+  t in <id> <base64>         bytes for that tab (no reply)
+  t size <id> <cols> <rows>  resize that tab's pty (no reply)
+  t close <id>               hang that tab up; "t exit <id> <status>" follows
+The agent sends, unprompted:
+  t out <id> <base64>        output, at most 3072 raw bytes per line
+  t exit <id> <status>       the shell ended: its exit code, or 128 + the signal
+Ids are 1 to 8, chosen by the page. The console (/dev/hvc0) is not a tab.
+
+Environment (set by the tests, otherwise the defaults): XIAONUX_AGENT_DEV
+(/dev/hvc1), XIAONUX_AGENT_SOCK (/run/xiaonux-agent.sock), XIAONUX_AGENT_TAB_CWD
+(/root, the tab shells' working directory; "/" if it can't be entered).
 
 Copyright (c) 2026 xiaonux authors. SPDX-License-Identifier: Apache-2.0
 """
-import base64, fcntl, hashlib, os, select, socket, struct, termios, time, tty
+import base64, fcntl, hashlib, os, select, signal, socket, struct, termios, time, tty
 
-SOCK = "/run/xiaonux-agent.sock"
+DEV = os.environ.get("XIAONUX_AGENT_DEV", "/dev/hvc1")
+SOCK = os.environ.get("XIAONUX_AGENT_SOCK", "/run/xiaonux-agent.sock")
+TAB_CWD = os.environ.get("XIAONUX_AGENT_TAB_CWD", "/root")
+TAB_MAX = 8                  # open tabs at once
+TAB_READ = 3072              # raw bytes per "t out" line, and per read
+TAB_HANGUP = 2.0             # seconds from SIGHUP to SIGKILL
+TAB_ENV = {
+    "HOME": "/root", "USER": "root", "LOGNAME": "root", "SHELL": "/bin/bash",
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "TERM": "xterm-256color",
+}
 CLIENT_LINE_MAX = 256 << 10  # longest line we accept from the x6 client (a chunk is ~64 KB)
 CLIENT_OUT_MAX = 64 << 20    # a client that stops reading is dropped past this backlog
 RNDADDENTROPY = 0x40085203  # _IOW('R', 0x03, int[2])
@@ -172,10 +202,231 @@ class Client:
             del self.outbuf[:n]
 
 
+class Tab:
+    def __init__(self, tid: int, pid: int, fd: int):
+        self.id = tid
+        self.pid = pid
+        self.fd = fd            # pty master, non-blocking
+        self.writeq = bytearray()  # input waiting for the pty
+        self.eof = False        # the master hit EOF/EIO: the shell is gone or going
+        self.closing = False    # SIGHUP sent
+        self.kill_at = None     # monotonic time of the SIGKILL, while not yet sent
+
+
+TABS = {}        # id -> Tab
+ZOMBIES = {}     # pid -> exit status, reaped but not yet reported
+RESET_PENDING = False
+
+
+def exit_status(st: int) -> int:
+    if os.WIFSIGNALED(st):
+        return 128 + os.WTERMSIG(st)
+    return os.WEXITSTATUS(st) if os.WIFEXITED(st) else 0
+
+
+def signal_group(pid: int, sig: int):
+    try:
+        os.killpg(pid, sig)  # the shell is its own session and group leader
+    except OSError:
+        pass
+
+
+def tab_child(master: int, slave: int, cols: int, rows: int):
+    """Runs in the forked child; never returns."""
+    try:
+        os.close(master)
+        os.setsid()
+        fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+        for n in (0, 1, 2):
+            os.dup2(slave, n)
+        if slave > 2:
+            os.close(slave)
+        # Python ignores SIGPIPE, and ignored signals survive exec: restore it for the shell.
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+        try:
+            os.chdir(TAB_CWD)
+        except OSError:
+            os.chdir("/")
+        os.execve("/bin/bash", ["-bash"], TAB_ENV)
+    except BaseException:
+        os._exit(127)
+
+
+def spawn(tid: int, cols: int, rows: int) -> Tab:
+    master, slave = os.openpty()  # both ends are non-inheritable
+    try:
+        pid = os.fork()
+    except BaseException:
+        os.close(master)
+        os.close(slave)
+        raise
+    if pid == 0:
+        tab_child(master, slave, cols, rows)
+    os.close(slave)  # the parent must not hold the slave, or the master never sees EOF
+    os.set_blocking(master, False)
+    return Tab(tid, pid, master)
+
+
+def start_close(t: Tab):
+    if not t.closing:
+        t.closing = True
+        t.kill_at = time.monotonic() + TAB_HANGUP
+        signal_group(t.pid, signal.SIGHUP)
+
+
+def open_tab(args) -> str:
+    try:
+        tid = int(args[0])
+    except (IndexError, ValueError):
+        return "err t bad\n"
+    try:
+        cols, rows = int(args[1]), int(args[2])
+    except (IndexError, ValueError):
+        return f"t error {tid} bad\n"
+    if not (1 <= cols <= 1000 and 1 <= rows <= 1000):
+        return f"t error {tid} bad\n"
+    if len(TABS) >= TAB_MAX:  # checked before the id, so a 9th open is "full"
+        return f"t error {tid} full\n"
+    if not 1 <= tid <= TAB_MAX:
+        return f"t error {tid} bad\n"
+    if tid in TABS:
+        return f"t error {tid} busy\n"
+    try:
+        TABS[tid] = spawn(tid, cols, rows)
+    except Exception as e:
+        return f"t error {tid} {type(e).__name__}\n"
+    return f"t opened {tid}\n"
+
+
+def handle_tab(line: str) -> str:
+    """Commands starting "t ". Output lines (t out, t exit) are sent by the loop."""
+    global RESET_PENDING
+    parts = line.split()
+    sub, args = (parts[1] if len(parts) > 1 else ""), parts[2:]
+    if sub == "reset":
+        for t in TABS.values():
+            start_close(t)
+        RESET_PENDING = True  # "t ready" goes out from the loop once TABS is empty
+        return ""
+    if sub == "open":
+        return open_tab(args)
+    if sub == "in":
+        try:
+            tid, data = int(args[0]), base64.b64decode(args[1])
+        except (IndexError, ValueError):
+            return ""
+        t = TABS.get(tid)
+        if t is not None and not t.eof:
+            t.writeq += data
+        return ""
+    if sub == "size":
+        try:
+            tid, cols, rows = int(args[0]), int(args[1]), int(args[2])
+        except (IndexError, ValueError):
+            return ""
+        t = TABS.get(tid)
+        if t is not None and 1 <= cols <= 1000 and 1 <= rows <= 1000:
+            try:
+                fcntl.ioctl(t.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+            except OSError:
+                pass
+        return ""
+    if sub == "close":
+        try:
+            t = TABS.get(int(args[0]))
+        except (IndexError, ValueError):
+            return ""
+        if t is not None:
+            start_close(t)
+        return ""
+    return "err t unknown\n"
+
+
+def tab_read(t: Tab, out):
+    """One read of at most TAB_READ bytes: one "t out" line per read."""
+    try:
+        data = os.read(t.fd, TAB_READ)
+    except BlockingIOError:
+        return
+    except OSError:  # EIO: the shell side is closed
+        data = b""
+    if not data:
+        t.eof = True
+        start_close(t)  # a shell that closed its pty but lives on still gets SIGHUP
+        return
+    out(b"t out %d %s\n" % (t.id, base64.b64encode(data)))
+
+
+def tab_flush(t: Tab):
+    try:
+        n = os.write(t.fd, t.writeq)
+    except OSError:  # EAGAIN, or EIO once the shell is gone (the read side sees EOF)
+        return
+    del t.writeq[:n]
+
+
+def drain(t: Tab, out):
+    """Output still queued on the master after the shell was reaped."""
+    for _ in range(64):
+        try:
+            data = os.read(t.fd, TAB_READ)
+        except OSError:
+            return
+        if not data:
+            return
+        out(b"t out %d %s\n" % (t.id, base64.b64encode(data)))
+
+
+def reap():
+    """Collect exited children without blocking. Statuses wait in ZOMBIES
+    until their tab reports them, so nothing is lost."""
+    if not TABS:
+        return  # no children, so waitpid(-1) would only raise
+    while True:
+        try:
+            pid, st = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if pid == 0:
+            return
+        ZOMBIES[pid] = exit_status(st)
+
+
+def finish_dead(out):
+    """A tab whose shell has been reaped is closed and reported."""
+    for t in list(TABS.values()):
+        if t.pid in ZOMBIES:
+            status = ZOMBIES.pop(t.pid)
+            drain(t, out)
+            try:
+                os.close(t.fd)
+            except OSError:
+                pass
+            del TABS[t.id]
+            out(b"t exit %d %d\n" % (t.id, status))
+
+
+def kill_overdue():
+    now = time.monotonic()
+    for t in TABS.values():
+        # Still in TABS, so not reaped yet: the pid is still ours to signal.
+        if t.kill_at is not None and now >= t.kill_at:
+            t.kill_at = None
+            signal_group(t.pid, signal.SIGKILL)
+
+
 def main():
+    global RESET_PENDING
     lock_memory()
-    fd = os.open("/dev/hvc1", os.O_RDWR | os.O_NOCTTY)
+    fd = os.open(DEV, os.O_RDWR | os.O_NOCTTY)
     tty.setraw(fd)
+    # Shells exiting wake the loop: the signal writes a byte to this pipe.
+    chld_r, chld_w = os.pipe()
+    os.set_blocking(chld_r, False)
+    os.set_blocking(chld_w, False)
+    signal.signal(signal.SIGCHLD, lambda *_: None)
+    signal.set_wakeup_fd(chld_w, warn_on_full_buffer=False)
 
     def out(b: bytes):
         while b:
@@ -190,9 +441,21 @@ def main():
     buf = bytearray()
 
     while True:
-        rl = [fd] + ([srv] if srv is not None else []) + ([client.conn] if client else [])
-        wl = [client.conn] if client and client.outbuf else []
-        r, w, _ = select.select(rl, wl, [])
+        # A tab at EOF is no longer read (it would be ready forever until reaped).
+        tab_rl = [t.fd for t in TABS.values() if not t.eof]
+        tab_wl = [t.fd for t in TABS.values() if t.writeq]
+        rl = [fd] + ([srv] if srv is not None else []) + ([client.conn] if client else []) + tab_rl
+        wl = ([client.conn] if client and client.outbuf else []) + tab_wl
+        # SIGCHLD wakes select through the pipe; a timeout only while a SIGKILL is due.
+        due = [t.kill_at for t in TABS.values() if t.kill_at is not None]
+        timeout = max(0.0, min(due) - time.monotonic()) if due else None
+        r, w, _ = select.select(rl + [chld_r], wl, [], timeout)
+        if chld_r in r:
+            try:
+                while os.read(chld_r, 512):
+                    pass
+            except BlockingIOError:
+                pass
 
         # Writes to hvc1 happen only here, never in the middle of a reply:
         # handle() writes all its lines (a get's data lines) before it returns.
@@ -212,6 +475,14 @@ def main():
                     if line.startswith("x6 "):
                         if client and not client.queue(raw.rstrip(b"\r") + b"\n"):
                             client = drop(client, out)
+                        continue
+                    if line.split()[:1] == ["t"]:
+                        try:
+                            reply = handle_tab(line)
+                        except Exception as e:
+                            reply = f"err t {type(e).__name__}\n"
+                        if reply:
+                            out(reply.encode())
                         continue
                     try:
                         reply = handle(line, out)
@@ -262,6 +533,18 @@ def main():
                 client.flush()
             except OSError:
                 client = drop(client, out)
+
+        for t in list(TABS.values()):
+            if t.fd in r and not t.eof:
+                tab_read(t, out)
+            if t.fd in w:
+                tab_flush(t)
+        reap()
+        finish_dead(out)
+        kill_overdue()
+        if RESET_PENDING and not TABS:
+            RESET_PENDING = False
+            out(f"t ready {TAB_MAX}\n".encode())
 
 
 def drop(client: Client, out) -> None:

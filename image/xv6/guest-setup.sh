@@ -89,14 +89,15 @@ Start (the lab is already cloned in ~/xv6-labs-2026, branch util):
 
     cd ~/xv6-labs-2026
     make qemu            xv6 boots in this terminal; Ctrl-A x quits
-    make qemu-gdb        waits for gdb; in a second shell run gdb (see below)
+    make qemu-gdb        waits for gdb; in a second tab (+ above the terminal)
+                         run gdb (see below)
     make grade           runs the grader (make clean first, then the tests)
 
 Note: `make qemu` makes a new fs.img every time (that is the lab's
 Makefile), so files written in xv6 are lost at the next `make qemu`. Use
 `make qemu-fs` to keep them.
 
-Debugging with gdb (second shell):
+Debugging with gdb (second tab, + above the terminal):
 
     gdb -nx -ex 'set architecture riscv:rv64' \
         -ex "target remote 127.0.0.1:$(make print-gdbport)" \

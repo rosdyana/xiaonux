@@ -11,6 +11,7 @@ import { initGuides, LESSONS, LESSONS_DONE_KEY, lessonProgress } from './ui/guid
 import { renderHelperFiles } from './ui/helper';
 import { applyDom, mountPickers, onLocaleChange, t, type Key } from './i18n';
 import { initConsent } from './consent';
+import { activate, addShell, CONSOLE, initialTabs, nextId, removeShell, tabIds, type TabState } from './terminal-tabs';
 
 applyDom();
 mountPickers();
@@ -105,7 +106,7 @@ const THEMES: Record<'light' | 'dark', ITheme> = {
     brightBlack: '#6f8a88', brightRed: '#f08a7c', brightGreen: '#a7cc9a', brightYellow: '#f0bd62', brightBlue: '#9fcbd9', brightMagenta: '#e2b4d2', brightCyan: '#9cd9d0', brightWhite: '#f5efe1',
   },
 };
-const term = new Terminal({
+const termOptions = () => ({
   fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
   fontSize: 14,
   lineHeight: 1.15,
@@ -114,14 +115,27 @@ const term = new Terminal({
   scrollback: 5000,
   theme: THEMES[dark.matches ? 'dark' : 'light'],
 });
-dark.addEventListener('change', () => { term.options.theme = THEMES[dark.matches ? 'dark' : 'light']; });
+const term = new Terminal(termOptions()); // the console (tab 0)
 const fit = new FitAddon();
 term.loadAddon(fit);
 term.open($('term'));
+/** A shell tab (2-4): its own xterm, in its own pane under #term. */
+interface ShellView { term: Terminal; fit: FitAddon; pane: HTMLElement; tail: string; decoder: TextDecoder }
+const shells = new Map<number, ShellView>();
+let tabState: TabState = initialTabs();
+/** The guest's `tabs` message: how many shells it allows (0 = too old); null until it arrives. */
+let tabsMax: number | null = null;
+dark.addEventListener('change', () => {
+  const theme = THEMES[dark.matches ? 'dark' : 'light'];
+  term.options.theme = theme;
+  for (const v of shells.values()) v.term.options.theme = theme;
+});
 // The drawer animates its width; refit the terminal once when it settles,
 // not on every frame of the transition.
 let drawerMoving = false;
-const refit = () => { if (!workspace.hidden && !drawerMoving) fit.fit(); };
+/** Fits the visible terminal (a hidden xterm measures 0 x 0). */
+const fitActive = () => (tabState.active === CONSOLE ? fit : shells.get(tabState.active)?.fit)?.fit();
+const refit = () => { if (!workspace.hidden && !drawerMoving) fitActive(); };
 new ResizeObserver(refit).observe($('term-wrap'));
 drawer.addEventListener('transitionrun', (e) => { if (e.propertyName === 'width') drawerMoving = true; });
 for (const ev of ['transitionend', 'transitioncancel'] as const) {
@@ -179,9 +193,21 @@ const type = (s: string) => {
   const data = encoder.encode(s);
   send({ type: 'input', data }, [data.buffer]);
 };
+/** Types into terminal tab `id` (0 = the console). */
+function typeTo(id: number, s: string) {
+  if (id === CONSOLE) { type(s); return; }
+  const data = encoder.encode(s);
+  send({ type: 'tab-input', id, data }, [data.buffer]);
+}
 
 // -------------------------------------------------------------------- guides
-const guides = initGuides((s) => { type(s); term.focus(); });
+/** Types a guide's command into the active tab and returns that tab's id (see guides.ts). */
+const guides = initGuides((s) => {
+  const tab = tabState.active;
+  typeTo(tab, s);
+  activeTerm().focus();
+  return tab;
+});
 
 // ------------------------------------------------------------------- network
 interface NetPrefs { mode: 'off' | 'helper' | 'relay'; helperPort?: number; helperToken?: string }
@@ -361,7 +387,7 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   if (drawer.contains(document.activeElement)) {
     if (!wide.matches) setDrawer(false);
-    term.focus();
+    activeTerm().focus();
     return;
   }
   setDrawer(true);
@@ -371,7 +397,7 @@ document.addEventListener('keydown', (e) => {
 drawer.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || wide.matches || !drawer.classList.contains('open')) return;
   setDrawer(false);
-  term.focus();
+  activeTerm().focus();
 });
 setDrawer(store.get(DRAWER_KEY) === null ? wide.matches : store.get(DRAWER_KEY) === '1' && wide.matches);
 // The services tile under the guide can be hidden; it stays hidden in this browser.
@@ -424,6 +450,7 @@ function resetFailed(reason: string) {
 /** A worker failed to start or died: show why, drop it, and let Start and Reset be used again. */
 function workerFailed(w: Worker, message: string) {
   xv6Bridge.kill();
+  closeShells();
   w.terminate();
   if (worker === w) worker = null; // else boot() would return early
   setStatus('status.error', { message: message || 'the machine failed to start' });
@@ -470,7 +497,7 @@ function watchPrompts(bytes: Uint8Array) {
   tail = (tail + decoder.decode(bytes, { stream: true })).slice(-200);
   if (/login: ?$/.test(tail)) mark('login');
   if (/[#$] ?$/.test(tail) && (marks.login !== undefined || marks.restore !== undefined)) mark('prompt');
-  if (PROMPT.test(tail)) guides.onPrompt();
+  if (PROMPT.test(tail)) guides.onPrompt(CONSOLE);
 }
 
 // ------------------------------------------------------------- home/history
@@ -490,7 +517,7 @@ function showWorkspace() {
   workspace.hidden = false;
   document.body.classList.add('in-workspace');
   enter(workspace);
-  requestAnimationFrame(() => { fit.fit(); term.focus(); });
+  requestAnimationFrame(() => { fitActive(); activeTerm().focus(); });
 }
 // Every Start button on the start view (the cover and the closing section) boots the machine.
 const bootBtns = document.querySelectorAll<HTMLButtonElement>('[data-boot]');
@@ -534,6 +561,7 @@ async function boot(forceCold = false) {
   showWorkspace();
   if (worker) return;
   xv6Bridge.kill();
+  closeShells();
   if (netPrefs.mode === 'relay' && RELAY_URL) await ensureRelaySession();
   bootBtn.disabled = true;
   tBoot = performance.now();
@@ -661,6 +689,25 @@ function onWorker(m: FromWorker) {
     case 'x6':
       xv6Bridge.onLine(m.line);
       break;
+    case 'tab-out': {
+      const v = shells.get(m.id); // a shell this page doesn't have (closed) is ignored
+      if (!v) break;
+      v.term.write(m.data);
+      v.tail = (v.tail + v.decoder.decode(m.data, { stream: true })).slice(-200);
+      if (PROMPT.test(v.tail)) guides.onPrompt(m.id);
+      break;
+    }
+    case 'tab-exit':
+      dropShell(m.id);
+      break;
+    case 'tab-error':
+      dropShell(m.id);
+      flashStatus('status.tabFailed', { reason: m.reason });
+      break;
+    case 'tabs':
+      tabsMax = m.max;
+      renderNewTab();
+      break;
     case 'error':
       setStatus('status.error', { message: m.message });
       statusEl.dataset.state = 'error';
@@ -676,23 +723,25 @@ function setCtrl(on: boolean) {
   ctrl = on;
   keysEl.querySelector('[data-key=ctrl]')!.setAttribute('aria-pressed', String(on));
 }
-term.onData((s) => {
+/** Keys typed into terminal tab `tab` (0 = the console). */
+function onKeys(tab: number, s: string) {
   if (ctrl && s.length === 1) {
     const c = s.toLowerCase().charCodeAt(0);
     if (c >= 0x61 && c <= 0x7a) s = String.fromCharCode(c - 0x60);
     setCtrl(false);
   }
-  if (s.includes('\r')) guides.onEnter();
-  type(s);
-});
+  if (s.includes('\r')) guides.onEnter(tab);
+  typeTo(tab, s);
+}
+term.onData((s) => onKeys(CONSOLE, s));
 const KEYS: Record<string, string> = { esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D', pipe: '|', tilde: '~' };
 keysEl.addEventListener('pointerdown', (e) => e.preventDefault()); // keep the terminal's keyboard up
 keysEl.addEventListener('click', (e) => {
   const k = (e.target as HTMLElement).closest('button')?.dataset.key;
   if (!k) return;
   if (k === 'ctrl') setCtrl(!ctrl);
-  else type(KEYS[k]);
-  term.focus();
+  else typeTo(tabState.active, KEYS[k]);
+  activeTerm().focus();
 });
 term.onResize(({ cols, rows }) => send({ type: 'resize', cols, rows }));
 
@@ -762,8 +811,179 @@ $('dl-form').addEventListener('submit', (e) => {
   dlName = p.split('/').pop() || p;
   showTransfer(t('transfer.downloading', { name: dlName }), 0);
   send({ type: 'download', path: p.replace(/^\/root\/?/, '') });
-  term.focus();
+  activeTerm().focus();
 });
+
+// ------------------------------------------------------------- terminal tabs
+// The console is tab 0; shells are tabs 2-4 (terminal-tabs.ts keeps which are open).
+// Each shell has its own xterm in its own pane; only the active one is shown.
+const tabWrap = $('term-wrap');
+const tabsEl = $('term-tabs');
+const consoleTab = $<HTMLButtonElement>('tab-0');
+const newTabBtn = $<HTMLButtonElement>('tab-new');
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] => {
+  const n = document.createElement(tag);
+  n.className = cls;
+  n.textContent = text;
+  return n;
+};
+const tabButton = (id: number) => $<HTMLButtonElement>(`tab-${id}`);
+function xtermOf(id: number): Terminal | undefined { return id === CONSOLE ? term : shells.get(id)?.term; }
+function activeTerm(): Terminal { return xtermOf(tabState.active) ?? term; }
+
+function makeView(id: number): ShellView {
+  const pane = el('div', 'term-pane');
+  pane.id = `term-${id}`;
+  $('term').append(pane);
+  const tm = new Terminal(termOptions());
+  const f = new FitAddon();
+  tm.loadAddon(f);
+  tm.open(pane);
+  tm.attachCustomKeyEventHandler((e) => !isSwitchKey(e));
+  tm.onData((s) => onKeys(id, s));
+  tm.onResize(({ cols, rows }) => send({ type: 'tab-resize', id, cols, rows }));
+  return { term: tm, fit: f, pane, tail: '', decoder: new TextDecoder() };
+}
+
+/** Shows the active tab's pane, hides the others, and fits the one on screen. */
+function showActive() {
+  const id = tabState.active;
+  if (term.element) term.element.style.display = id === CONSOLE ? '' : 'none';
+  for (const [sid, v] of shells) v.pane.hidden = sid !== id;
+  markTabs();
+  fitActive();
+}
+
+function markTabs() {
+  for (const id of tabIds(tabState)) {
+    const on = id === tabState.active;
+    tabButton(id).setAttribute('aria-selected', String(on));
+    tabButton(id).tabIndex = on ? 0 : -1;
+  }
+}
+
+/** Rebuilds the strip from the tab state. Labels follow the language, so this runs again on a change. */
+function renderTabs() {
+  const shellTabs = tabState.shells.map((id) => {
+    const tab = el('button', 'term-tab');
+    tab.type = 'button';
+    tab.id = `tab-${id}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-label', t('tabs.shell', { n: id }));
+    tab.setAttribute('aria-controls', `term-${id}`);
+    const num = el('span', 'num', String(id));
+    num.setAttribute('aria-hidden', 'true');
+    tab.append(el('span', 'lbl', t('tabs.shell', { n: id })), num);
+    tab.addEventListener('click', () => activateTab(id));
+    const close = el('button', 'term-x', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', t('tabs.close', { n: id }));
+    close.title = t('tabs.close', { n: id });
+    close.addEventListener('click', () => closeShell(id));
+    const wrap = el('span', 'term-tab-wrap');
+    wrap.setAttribute('role', 'none');
+    wrap.append(tab, close);
+    return wrap;
+  });
+  tabsEl.replaceChildren(consoleTab, ...shellTabs);
+  tabWrap.classList.toggle('has-shells', tabState.shells.length > 0);
+  markTabs();
+  renderNewTab();
+}
+
+/** `+` is hidden until the guest says what it supports; disabled when it's too old or at the cap. */
+function renderNewTab() {
+  const known = tabsMax !== null;
+  newTabBtn.hidden = !known;
+  tabWrap.classList.toggle('tabs-ready', known);
+  if (!known) return;
+  const free = nextId(tabState) !== null;
+  newTabBtn.disabled = tabsMax === 0 || !free;
+  newTabBtn.title = tabsMax === 0 ? t('tabs.needsReset') : free ? t('tabs.new') : t('tabs.full');
+}
+
+function activateTab(id: number, focusTab = false) {
+  tabState = activate(tabState, id);
+  showActive();
+  if (focusTab) tabButton(id).focus();
+  else activeTerm().focus();
+}
+
+/** `+`: a new shell with the active terminal's size; its tab shows at once. */
+function openShell(): number | null {
+  const id = nextId(tabState);
+  if (tabsMax === null || tabsMax === 0 || id === null) return null;
+  const { cols, rows } = activeTerm();
+  shells.set(id, makeView(id));
+  tabState = addShell(tabState, id);
+  send({ type: 'tab-open', id, cols, rows });
+  renderTabs();
+  showActive();
+  activeTerm().focus();
+  return id;
+}
+
+/** ×: the guest closes the shell; its tab goes when the guest reports the exit. */
+function closeShell(id: number) {
+  send({ type: 'tab-close', id });
+}
+
+/** The shell is gone (`t exit`) or never opened (`t error`): drop its tab, and focus the one on its left. */
+function dropShell(id: number) {
+  const view = shells.get(id);
+  if (!view) return;
+  const wasActive = tabState.active === id;
+  tabState = removeShell(tabState, id);
+  shells.delete(id);
+  view.term.dispose();
+  view.pane.remove();
+  renderTabs();
+  if (wasActive) {
+    showActive();
+    tabButton(tabState.active).focus();
+  }
+}
+
+/** Reset, a restart or a failed worker: the guest's shells are gone, so their tabs go too. */
+function closeShells() {
+  for (const v of shells.values()) {
+    v.term.dispose();
+    v.pane.remove();
+  }
+  shells.clear();
+  tabState = initialTabs();
+  tabsMax = null;
+  if (term.element) term.element.style.display = '';
+  renderTabs();
+}
+
+/** A message in the status bar for four seconds, then the status it replaced (unless something else changed it since). */
+function flashStatus(key: Key, vars: Record<string, string | number>) {
+  const before = statusDraw;
+  const beforeState = statusEl.dataset.state ?? '';
+  const draw = () => { statusEl.textContent = t(key, vars); statusEl.title = ''; };
+  setStatus(draw);
+  statusEl.dataset.state = 'error';
+  setTimeout(() => {
+    if (statusDraw !== draw) return;
+    statusDraw = before;
+    before();
+    statusEl.dataset.state = beforeState;
+  }, 4000);
+}
+
+newTabBtn.addEventListener('click', () => openShell());
+consoleTab.addEventListener('click', () => activateTab(CONSOLE));
+// ARIA tabs: the arrow keys move between tabs and activate them.
+tabsEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  const ids = tabIds(tabState);
+  const i = ids.indexOf(tabState.active);
+  e.preventDefault();
+  activateTab(ids[(i + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length], true);
+});
+onLocaleChange(renderTabs);
+renderTabs();
 
 // --------------------------------------------------------------- start/reset
 bootBtn.addEventListener('click', () => boot());
@@ -777,7 +997,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('[data-try]')) {
 const resetDlg = $<HTMLDialogElement>('reset-dlg');
 resetBtn.addEventListener('click', () => { resetDlg.returnValue = ''; resetDlg.showModal(); });
 resetDlg.addEventListener('close', () => {
-  if (resetDlg.returnValue !== 'reset') { term.focus(); return; }
+  if (resetDlg.returnValue !== 'reset') { activeTerm().focus(); return; }
   resetBtn.disabled = true;
   setStatus('status.resetting');
   xv6Bridge.kill();
@@ -815,14 +1035,23 @@ window.addEventListener('pagehide', () => send({ type: 'save', reason: 'pagehide
 if (TEST_HOOKS) {
   (window as unknown as { xiaonuxSave: () => void }).xiaonuxSave = () => send({ type: 'save', reason: 'manual' });
   (window as unknown as { xiaonuxJitExport: () => void }).xiaonuxJitExport = () => send({ type: 'jit-export' });
-  (window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => {
-    const b = term.buffer.active;
+  const screenText = (tm: Terminal, n = 60): string => {
+    const b = tm.buffer.active;
     const end = b.baseY + b.cursorY + 1;
     const lines: string[] = [];
     for (let i = Math.max(0, end - n); i < end; i++) lines.push(b.getLine(i)?.translateToString(true) ?? '');
     return lines.join('\n');
   };
+  (window as unknown as { xiaonuxScreen: (n: number) => string }).xiaonuxScreen = (n = 60) => screenText(term, n);
   (window as unknown as { xiaonuxType: (s: string) => void }).xiaonuxType = type;
+  // Terminal tabs. Tab 0 is the console.
+  (window as unknown as { xiaonuxTabs: unknown }).xiaonuxTabs = {
+    open: () => openShell(),
+    list: () => tabIds(tabState),
+    type: (id: number, s: string) => typeTo(id, s),
+    screen: (id: number, n = 60) => screenText(xtermOf(id) ?? term, n),
+    activate: (id: number) => activateTab(id),
+  };
 
   // xv6 page runner (bench/xv6-browser.mjs). The worker exists only after
   // start() is called; the page itself never starts it.

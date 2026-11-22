@@ -341,7 +341,14 @@
 
       <div class="work">
         <main id="term-wrap" class="term-wrap tile">
-          <div class="tile-head" aria-hidden="true"><b>terminal</b><span>bash · Debian 13 · riscv64</span><kbd class="key-chip">Ctrl+Shift+G</kbd></div>
+          <div class="tile-head">
+            <div id="term-tabs" class="term-tabs" role="tablist" aria-label="Terminal tabs" data-i18n-aria-label="tabs.terminal">
+              <button id="tab-0" class="term-tab" type="button" role="tab" aria-selected="true" aria-controls="term" tabindex="0" data-i18n="tabs.console">console</button>
+            </div>
+            <button id="tab-new" class="term-new" type="button" aria-label="New shell" data-i18n-aria-label="tabs.new" hidden>+</button>
+            <span class="meta" aria-hidden="true">bash · Debian 13 · riscv64</span>
+            <kbd class="key-chip" aria-hidden="true">Ctrl+Shift+G</kbd>
+          </div>
           <div id="term"></div>
           <div id="drop" class="drop" hidden><p data-i18n-html="drop">Drop to upload into <code>/root/uploads</code></p></div>
           <div id="transfer" class="transfer" role="status" aria-live="polite" hidden>

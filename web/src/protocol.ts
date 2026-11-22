@@ -25,7 +25,12 @@ export type ToWorker =
   | { type: 'upload'; name: string; data: Uint8Array }
   | { type: 'download'; path: string }
   /** xv6 bridge: one x6 line from the shim (see xv6-bridge.ts), relayed through the agent */
-  | { type: 'x6'; line: string };
+  | { type: 'x6'; line: string }
+  /** extra shells (tabs 2-4); the console is not here */
+  | { type: 'tab-open'; id: number; cols: number; rows: number }
+  | { type: 'tab-input'; id: number; data: Uint8Array }
+  | { type: 'tab-resize'; id: number; cols: number; rows: number }
+  | { type: 'tab-close'; id: number };
 
 export type FromWorker =
   | { type: 'console'; data: Uint8Array }
@@ -49,6 +54,12 @@ export type FromWorker =
   | { type: 'net-blocked'; host: string; reason: string }
   | { type: 'saved'; reason: string; ms: number; bytes: number }
   | { type: 'x6'; line: string }
+  | { type: 'tab-out'; id: number; data: Uint8Array }
+  | { type: 'tab-exit'; id: number; status: number }
+  | { type: 'tab-opened'; id: number }
+  | { type: 'tab-error'; id: number; reason: string }
+  /** max: shells the guest allows; 0 = guest agent too old (needs Reset) */
+  | { type: 'tabs'; max: number }
   | { type: 'error'; message: string };
 
 // Messages between the page and its xv6 worker (xv6.worker.ts). Two users:

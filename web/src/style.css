@@ -427,7 +427,24 @@ a.wordmark { text-decoration: none; }
 .work > .tile:focus-within, .drawer .tile:focus-within { border-color: var(--focus); }
 .term-wrap { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; background: var(--term); overflow: hidden; }
 .term-wrap .tile-head { background: var(--tile); }
-#term { flex: 1; min-height: 0; padding: 8px 4px 4px 12px; }
+#term { flex: 1; min-height: 0; padding: 8px 4px 4px 12px; position: relative; }
+/* Shells (tabs 2-4) each have their own xterm, stacked in the same box; only the active one shows. */
+#term > .term-pane { position: absolute; inset: 0; padding: inherit; }
+
+/* Tab strip in the terminal's head: the same mono type as the head, the active tab underlined in the accent. */
+.term-tabs { flex: 0 1 auto; min-width: 0; display: flex; align-items: stretch; align-self: stretch; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.term-tabs::-webkit-scrollbar { display: none; }
+.term-wrap .term-tab, .term-wrap .term-new, .term-wrap .term-x { font: 12px/1 var(--mono); color: var(--ink-2); background: none; border: 0; cursor: pointer; }
+.term-wrap .term-tab { display: inline-flex; align-items: center; flex: none; padding: 0 9px; white-space: nowrap; }
+.term-wrap .term-tab-wrap { flex: none; display: inline-flex; align-items: stretch; overflow: visible; }
+.term-wrap .term-tab:hover, .term-wrap .term-x:hover, .term-wrap .term-new:hover:not(:disabled) { color: var(--ink); }
+.term-wrap .term-tab[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.term-tab-wrap .term-tab { padding-right: 2px; }
+.term-wrap .term-x { padding: 0 7px 0 2px; font-size: 14px; }
+.term-wrap .term-new { flex: none; padding: 0 8px; font-size: 15px; }
+.term-wrap .term-new:disabled { opacity: 0.45; cursor: default; }
+.term-tab .num { display: none; }
+.term-wrap.has-shells .meta { display: none; }
 .xterm .xterm-viewport { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 
 .drop {
@@ -706,7 +723,10 @@ select:hover, input[type="text"]:hover { border-color: var(--line-strong); }
   .bar-btn { padding: 7px; }
   .chip { padding: 6px 8px; gap: 6px; }
   .work { padding: 4px; }
-  .term-wrap .tile-head { display: none; }
+  .term-wrap:not(.tabs-ready) .tile-head { display: none; }
+  .term-wrap .key-chip { display: none; }
+  .term-tab-wrap .lbl { display: none; }
+  .term-tab-wrap .num { display: inline; }
   #term { padding: 6px 0 0 8px; }
 }
 /* ---------------------------------------------------------------- analytics consent */
