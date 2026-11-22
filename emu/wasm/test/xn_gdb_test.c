@@ -313,7 +313,7 @@ static int test_registers(void)
         char gbody[1 + 33 * 16 + 1];
         gbody[0] = 'G';
         for (i = 0; i < 33; i++)
-            strncpy(gbody + 1 + 16 * i, "0100000000000000", 16);
+            memcpy(gbody + 1 + 16 * i, "0100000000000000", 16);
         gbody[1 + 33 * 16] = 0;
         CHECK(expect_reply(g, gbody, "OK", "G"), "G");
     }
